@@ -13,12 +13,14 @@ Android タブレット + Sony PaSoRi RC-S380 で学生証（FeliCa）の学籍�
 
 ## この Mac でカードを解析する
 
-必要: RC-S380、データ対応 mini-USB ケーブル、uv、libusb。
+必要: RC-S380、データ対応 mini-USB ケーブル、mise、Homebrew の libusb。
+JDK / Node / Python / uv / Android SDK は mise.toml で管理します。
 
-    uv python pin 3.12
-    uv sync
-    uv run python -m tools.probe_reader
-    uv run python -m tools.dump_student_card
+    mise trust
+    mise install
+    mise run setup
+    mise run probe
+    mise run dump
 
 成功条件:
 
@@ -32,9 +34,6 @@ dumps/ は gitignore 済みです。学籍番号は個人情報なのでコミ�
 
 React Native アプリは app/ です。USB / FeliCa は Kotlin Native Module PasoriModule に閉じ、JS には学籍番号と IDm だけを返します。
 
-    cd app
-    export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-    export ANDROID_HOME="$HOME/Library/Android/sdk"
-    npx react-native run-android
+    mise run android
 
 タブレットに RC-S380 を挿し、USB 権限を許可してから学生証をタッチします。学籍番号は AE19051 形式です。

@@ -1,0 +1,23 @@
+[tools]
+java = "temurin-21"
+node = "24.0.1"
+python = "3.12"
+uv = "0.12.2"
+android-sdk = "13.0"
+
+[tasks.setup]
+description = "Install Android SDK packages for RN 0.87 and sync Python deps"
+file = "scripts/mise-setup.sh"
+
+[tasks.android]
+description = "Run the React Native Android app with mise-managed JDK/SDK"
+dir = "app"
+run = "npx react-native run-android"
+
+[tasks.probe]
+description = "Check whether RC-S380 is visible"
+run = "uv run python -m tools.probe_reader"
+
+[tasks.dump]
+description = "Dump an unencrypted student card via RC-S380"
+run = "uv run python -m tools.dump_student_card"
