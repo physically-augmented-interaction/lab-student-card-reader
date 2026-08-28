@@ -1,0 +1,27 @@
+# OS
+.DS_Store
+
+# Python
+.venv/
+.python-version
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Card dumps contain IDm / student numbers.
+dumps/*
+!dumps/.gitkeep
+
+# React Native / Android / iOS build artifacts
+app/node_modules/
+app/android/.gradle/
+app/android/.kotlin/
+app/android/build/
+app/android/app/build/
+app/android/local.properties
+app/android/.cxx/
+app/ios/Pods/
+app/ios/build/
+app/vendor/bundle/
+app/.metro-health-check*
+app/coverage/

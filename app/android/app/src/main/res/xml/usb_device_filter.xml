@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sony RC-S380/S  0x054C / 0x06C1 -->
+    <usb-device vendor-id="1356" product-id="1729" />
+    <!-- Sony RC-S380/P  0x054C / 0x06C3 -->
+    <usb-device vendor-id="1356" product-id="1731" />
+</resources>

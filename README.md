@@ -1,0 +1,40 @@
+# lab-student-card-reader
+
+Android タブレット + Sony PaSoRi RC-S380 で学生証（FeliCa）の学籍番号を読むための調査リポジトリです。
+
+実装計画は [docs/implementation-plan.md](docs/implementation-plan.md) にあります。
+
+## いま分かっていること
+
+- RC-S380 の公式対応 OS は Windows のみで、Android 製品サポートはありません。
+- それでも USB bulk デバイスとして扱えます。Sony VID 0x054C、PID 0x06C1（RC-S380/S）または 0x06C3（RC-S380/P）。
+- 学籍番号は非暗号化領域にあります。最初の実カードではシステム 0x8277、サービス 0x010B、block 0 の ASCII 002AE19051030000 から AE19051 を切り出します。
+- 前後の 00 / 2 / 03 / ゼロパディングは学籍番号ではありません。
+
+## この Mac でカードを解析する
+
+必要: RC-S380、データ対応 mini-USB ケーブル、uv、libusb。
+
+    uv python pin 3.12
+    uv sync
+    uv run python -m tools.probe_reader
+    uv run python -m tools.dump_student_card
+
+成功条件:
+
+1. probe-reader が RC-S380 を見つける
+2. 学生証の dump が dumps/ に書かれる
+3. 0x8277 / 0x010B / block 0 から AE19051 形式の学籍番号が取れる
+
+dumps/ は gitignore 済みです。学籍番号は個人情報なのでコミットしないでください。
+
+## React Native アプリ
+
+React Native アプリは app/ です。USB / FeliCa は Kotlin Native Module PasoriModule に閉じ、JS には学籍番号と IDm だけを返します。
+
+    cd app
+    export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+    export ANDROID_HOME="$HOME/Library/Android/sdk"
+    npx react-native run-android
+
+タブレットに RC-S380 を挿し、USB 権限を許可してから学生証をタッチします。学籍番号は AE19051 形式です。

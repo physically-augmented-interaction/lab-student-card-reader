@@ -1,0 +1,9 @@
+[project]
+name = "lab-student-card-reader"
+version = "0.1.0"
+description = "Analyze FeliCa student ID cards with Sony RC-S380 via nfcpy"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "nfcpy>=1.0.4",
+]
