@@ -21,3 +21,13 @@ run = "uv run python -m tools.probe_reader"
 [tasks.dump]
 description = "Dump an unencrypted student card via RC-S380"
 run = "uv run python -m tools.dump_student_card"
+
+[tasks.worker-dev]
+description = "Run attendance worker locally"
+dir = "worker"
+run = "npx wrangler dev"
+
+[tasks.worker-deploy]
+description = "Deploy attendance worker"
+dir = "worker"
+run = "npx wrangler deploy"

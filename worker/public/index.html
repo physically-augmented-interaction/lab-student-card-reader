@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab Attendance</title>
+  <link rel="stylesheet" href="/admin.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <p class="kicker">Manabe Lab</p>
+      <h1>入退室管理</h1>
+    </div>
+    <label class="month">
+      対象月
+      <input id="month" type="month" />
+    </label>
+  </header>
+
+  <section class="cards" id="summary"></section>
+
+  <section>
+    <h2>月次来室</h2>
+    <div class="chart" id="chart"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>学籍番号</th><th>名前</th><th>入室</th><th>退室</th><th>最終</th></tr>
+        </thead>
+        <tbody id="member-stats"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>メンバー</h2>
+    <form id="member-form" class="grid">
+      <input name="studentId" placeholder="学籍番号" required />
+      <input name="displayName" placeholder="名前" />
+      <input name="note" placeholder="メモ" />
+      <input name="sound" type="file" accept="audio/*" />
+      <button type="submit">保存</button>
+    </form>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>学籍番号</th><th>名前</th><th>メモ</th><th>効果音</th></tr>
+        </thead>
+        <tbody id="members"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>API キー</h2>
+    <form id="key-form" class="row">
+      <input name="name" placeholder="リーダー名" value="tablet-1" />
+      <button type="submit">発行</button>
+    </form>
+    <p id="new-key" class="notice"></p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>名前</th><th>prefix</th><th>最終利用</th><th></th></tr>
+        </thead>
+        <tbody id="api-keys"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

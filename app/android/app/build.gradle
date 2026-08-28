@@ -84,6 +84,12 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        def apiBaseUrl = System.getenv("LAB_API_BASE_URL") ?: (project.findProperty("LAB_API_BASE_URL") ?: "")
+        def apiKey = System.getenv("LAB_API_KEY") ?: (project.findProperty("LAB_API_KEY") ?: "")
+        def deviceId = System.getenv("LAB_DEVICE_ID") ?: (project.findProperty("LAB_DEVICE_ID") ?: "tablet-1")
+        buildConfigField "String", "API_BASE_URL", '"' + apiBaseUrl + '"'
+        buildConfigField "String", "API_KEY", '"' + apiKey + '"'
+        buildConfigField "String", "DEVICE_ID", '"' + deviceId + '"'
     }
     signingConfigs {
         debug {
@@ -92,6 +98,9 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+    }
+    buildFeatures {
+        buildConfig true
     }
     buildTypes {
         debug {

@@ -1,0 +1,27 @@
+{
+  "name": "lab-attendance",
+  "account_id": "04392c9375dae7b8e36ab02906af2fde",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lab-attendance",
+      "database_id": "b5e5b028-42f3-4279-b9dd-850f4ffd57ec",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Enable R2 in the Cloudflare dashboard, create bucket lab-attendance-sounds,
+  // then restore this binding:
+  // "r2_buckets": [{ "binding": "SOUNDS", "bucket_name": "lab-attendance-sounds" }]
+  "vars": {
+    "APP_TIMEZONE": "Asia/Tokyo"
+  }
+}

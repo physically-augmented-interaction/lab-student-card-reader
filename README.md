@@ -37,3 +37,22 @@ React Native アプリは app/ です。USB / FeliCa は Kotlin Native Module Pa
     mise run android
 
 タブレットに RC-S380 を挿し、USB 権限を許可してから学生証をタッチします。学籍番号は AE19051 形式です。
+
+## 入退室バックエンド
+
+Cloudflare Workers + D1。Web 管理画面はのちのち Cloudflare Access で絞ります。リーダー API は D1 管理の API キー（複数可、ハッシュ保存）です。
+
+公開URL: https://lab-attendance.manabe-lab.workers.dev
+
+    cd worker
+    npm install
+    npx wrangler d1 migrations apply lab-attendance --remote
+    npx wrangler deploy
+
+管理画面で名前・効果音・月次ダッシュボード・API キー発行ができます。効果音用 R2 は Cloudflare ダッシュボードで R2 を有効化したあと、bucket lab-attendance-sounds を作って wrangler.jsonc の binding を戻してください。
+
+Android アプリは gradle プロパティか環境変数で接続します。
+
+    LAB_API_BASE_URL=https://lab-attendance.manabe-lab.workers.dev
+    LAB_API_KEY=ltn_...
+    LAB_DEVICE_ID=tablet-1

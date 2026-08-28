@@ -7,7 +7,7 @@ import com.facebook.react.uimanager.ViewManager
 
 class PasoriPackage : ReactPackage {
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(PasoriModule(reactContext))
+        return listOf(PasoriModule(reactContext), PasoriConfigModule(reactContext))
     }
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {

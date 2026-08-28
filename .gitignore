@@ -25,3 +25,8 @@ app/ios/build/
 app/vendor/bundle/
 app/.metro-health-check*
 app/coverage/
+
+# Cloudflare
+worker/node_modules/
+worker/.wrangler/
+worker/.dev.vars

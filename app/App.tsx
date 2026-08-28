@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Pasori, type CardEvent, type ReaderEvent } from './src/native/Pasori';
+import { isApiConfigured, playMemberSound, scanCard, type ScanResponse } from './src/api';
 
 function statusLabel(event: ReaderEvent | null): string {
   if (!Pasori.isAvailable()) {
@@ -31,12 +32,23 @@ function statusLabel(event: ReaderEvent | null): string {
 function App() {
   const [reader, setReader] = useState<ReaderEvent | null>(null);
   const [card, setCard] = useState<CardEvent | null>(null);
+  const [scan, setScan] = useState<ScanResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const cardSub = Pasori.onCard(event => {
       setCard(event);
       setError(null);
+      scanCard({ studentId: event.studentId, idm: event.idm })
+        .then(async result => {
+          setScan(result);
+          await playMemberSound(result.soundUrl);
+        })
+        .catch(err => {
+          if (isApiConfigured()) {
+            setError(err instanceof Error ? err.message : String(err));
+          }
+        });
     });
     const readerSub = Pasori.onReader(event => {
       setReader(event);
@@ -68,10 +80,17 @@ function App() {
           <View style={styles.cardBox}>
             <Text style={styles.cardLabel}>学籍番号</Text>
             <Text style={styles.studentId}>{card?.studentId ?? '--------'}</Text>
+            <Text style={styles.meta}>{scan?.displayName || '未登録'}</Text>
+            <Text style={styles.meta}>
+              {scan ? (scan.eventType === 'enter' ? '入室' : '退室') : 'サーバー未送信'}
+            </Text>
             <Text style={styles.meta}>IDm {card?.idm ?? '-'}</Text>
             <Text style={styles.meta}>
               {card ? card.systemCode + ' / ' + card.serviceCode : '8277 / 010B'}
             </Text>
+            {!isApiConfigured() ? (
+              <Text style={styles.meta}>LAB_API_BASE_URL / LAB_API_KEY を設定してください</Text>
+            ) : null}
           </View>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable

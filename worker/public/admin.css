@@ -1,0 +1,26 @@
+
+:root {
+  color-scheme: dark;
+  font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+  background: #101418;
+  color: #f4f7f5;
+}
+body { margin: 0 auto; max-width: 1100px; padding: 32px 20px 80px; }
+header { display: flex; justify-content: space-between; gap: 16px; align-items: end; }
+.kicker { color: #8be9b0; letter-spacing: .12em; text-transform: uppercase; margin: 0; }
+h1, h2 { margin: 8px 0 16px; }
+section { margin-top: 36px; }
+.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.card { background: #1b2420; border-radius: 16px; padding: 16px; }
+.card b { display: block; font-size: 32px; margin-top: 8px; }
+.chart { display: grid; grid-auto-flow: column; align-items: end; gap: 4px; height: 160px; background: #1b2420; padding: 12px; border-radius: 16px; overflow: auto; }
+.bar { width: 10px; background: #2f6f4e; border-radius: 4px 4px 0 0; min-height: 2px; }
+form.grid, form.row, .month { display: flex; gap: 8px; flex-wrap: wrap; }
+input, button { font: inherit; border-radius: 10px; border: 0; padding: 10px 12px; }
+input { background: #232c28; color: inherit; }
+button { background: #2f6f4e; color: white; cursor: pointer; }
+.table-wrap { overflow: auto; margin-top: 12px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px; border-bottom: 1px solid #2a3530; }
+.notice { color: #8be9b0; min-height: 1.4em; }
+@media (max-width: 800px) { .cards { grid-template-columns: 1fr 1fr; } }
