@@ -441,16 +441,35 @@ async function dashboard(env: Env, request: Request): Promise<Response> {
   const leaveCount = rows.filter((row) => row.event_type === "leave").length;
   const presentNow = await currentPresentCount(env);
   const lastDay = daysInTokyoMonth(parsed.year, parsed.month);
-  const byDay = new Map<string, { date: string; enters: number; leaves: number; uniqueStudents: Set<string> }>();
-  const byStudent = new Map<string, { studentId: string; displayName: string; enters: number; leaves: number; lastVisitAt: string }>();
+
+  const todayKey = tokyoDayKey();
+  const byDay = new Map<string, { date: string; enters: number; leaves: number; uniqueStudents: Set<string>; members: Map<string, { studentId: string; displayName: string; enters: number; leaves: number; lastVisitAt: string }> }>();
+  const byStudent = new Map<string, { studentId: string; displayName: string; enters: number; leaves: number; lastVisitAt: string; days: Set<string> }>();
 
   for (const row of rows) {
     const day = tokyoDayKey(new Date(row.occurred_at));
-    if (!byDay.has(day)) byDay.set(day, { date: day, enters: 0, leaves: 0, uniqueStudents: new Set() });
+    if (!byDay.has(day)) {
+      byDay.set(day, { date: day, enters: 0, leaves: 0, uniqueStudents: new Set(), members: new Map() });
+    }
     const dayBucket = byDay.get(day)!;
     if (row.event_type === "enter") dayBucket.enters += 1;
     else dayBucket.leaves += 1;
-    dayBucket.uniqueStudents.add(row.student_id);
+
+    if (row.event_type === "enter") dayBucket.uniqueStudents.add(row.student_id);
+
+    if (!dayBucket.members.has(row.student_id)) {
+      dayBucket.members.set(row.student_id, {
+        studentId: row.student_id,
+        displayName: row.display_name || row.student_id,
+        enters: 0,
+        leaves: 0,
+        lastVisitAt: row.occurred_at,
+      });
+    }
+    const dayMember = dayBucket.members.get(row.student_id)!;
+    if (row.event_type === "enter") dayMember.enters += 1;
+    else dayMember.leaves += 1;
+    dayMember.lastVisitAt = row.occurred_at;
 
     if (!byStudent.has(row.student_id)) {
       byStudent.set(row.student_id, {
@@ -459,12 +478,14 @@ async function dashboard(env: Env, request: Request): Promise<Response> {
         enters: 0,
         leaves: 0,
         lastVisitAt: row.occurred_at,
+        days: new Set(),
       });
     }
     const studentBucket = byStudent.get(row.student_id)!;
     if (row.event_type === "enter") studentBucket.enters += 1;
     else studentBucket.leaves += 1;
     studentBucket.lastVisitAt = row.occurred_at;
+    studentBucket.days.add(day);
   }
 
   const daily = [];
@@ -476,6 +497,11 @@ async function dashboard(env: Env, request: Request): Promise<Response> {
       enters: bucket ? bucket.enters : 0,
       leaves: bucket ? bucket.leaves : 0,
       uniqueStudents: bucket ? bucket.uniqueStudents.size : 0,
+      members: bucket
+        ? [...bucket.members.values()]
+            .sort((a, b) => b.enters - a.enters || a.studentId.localeCompare(b.studentId))
+            .map((row) => ({ ...row, lastVisitAtLabel: formatTokyoDateTime(row.lastVisitAt) }))
+        : [],
     });
   }
 
@@ -484,14 +510,25 @@ async function dashboard(env: Env, request: Request): Promise<Response> {
     timezone: "Asia/Tokyo",
     summary: {
       uniqueStudents: uniqueStudents.size,
+      todayEnterUnique: byDay.get(todayKey)?.uniqueStudents.size || 0,
+      todayKey,
       enterCount,
       leaveCount,
       presentNow,
     },
     daily,
     members: [...byStudent.values()]
-      .sort((a, b) => b.enters - a.enters || a.studentId.localeCompare(b.studentId))
-      .map((row) => ({ ...row, lastVisitAtLabel: formatTokyoDateTime(row.lastVisitAt) })),
+      .sort((a, b) => b.days.size - a.days.size || b.enters - a.enters || a.studentId.localeCompare(b.studentId))
+      .map((row) => ({
+        studentId: row.studentId,
+        displayName: row.displayName,
+        enters: row.enters,
+        leaves: row.leaves,
+        uniqueDays: row.days.size,
+        days: [...row.days].sort(),
+        lastVisitAt: row.lastVisitAt,
+        lastVisitAtLabel: formatTokyoDateTime(row.lastVisitAt),
+      })),
     recent: rows.slice(-20).reverse().map((row) => ({ ...row, occurredAtLabel: formatTokyoDateTime(row.occurred_at) })),
   });
 }

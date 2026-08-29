@@ -76,7 +76,7 @@ section {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-top: 18px;
 }
@@ -86,6 +86,7 @@ section {
   padding: 16px 18px;
   color: var(--muted);
 }
+.card span { display: block; }
 .card b {
   display: block;
   color: var(--text);
@@ -109,7 +110,45 @@ section {
   background: var(--accent-2);
   border-radius: 4px 4px 0 0;
   min-height: 2px;
+  padding: 0;
+  min-width: 10px;
+  cursor: pointer;
 }
+.bar:hover, .bar.selected { background: var(--accent); }
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 16px;
+}
+.filter-label { color: var(--muted); font-size: 13px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-2);
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 13px;
+}
+.chip button, button.compact {
+  min-width: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+button.link {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  min-width: 0;
+  border-radius: 0;
+  text-align: left;
+}
+button.link:hover { color: var(--accent); }
+tr.selected td { color: var(--accent); }
 
 form { display: grid; gap: 14px; }
 .form-grid {
