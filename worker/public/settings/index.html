@@ -19,15 +19,23 @@
   </header>
 
   <section>
-    <h2>メンバー追加 / 更新</h2>
+    <div class="section-head">
+      <h2>メンバー追加 / 更新</h2>
+    </div>
     <p id="member-notice" class="notice"></p>
-    <form id="member-form" class="grid">
-      <input name="studentId" placeholder="学籍番号" required />
-      <input name="displayName" placeholder="名前" />
-      <input name="note" placeholder="メモ" />
-      <label>入室音 <input name="enterSound" type="file" accept="audio/*" /></label>
-      <label>退室音 <input name="leaveSound" type="file" accept="audio/*" /></label>
-      <button type="submit">保存</button>
+    <form id="member-form">
+      <div class="form-grid">
+        <label class="field"><span>学籍番号</span><input name="studentId" placeholder="AE19051" required /></label>
+        <label class="field"><span>名前</span><input name="displayName" placeholder="表示名" /></label>
+        <label class="field"><span>メモ</span><input name="note" placeholder="任意" /></label>
+      </div>
+      <div class="sound-grid">
+        <label class="file-box"><span>入室音</span><input name="enterSound" type="file" accept="audio/*" /></label>
+        <label class="file-box"><span>退室音</span><input name="leaveSound" type="file" accept="audio/*" /></label>
+      </div>
+      <div class="actions">
+        <button type="submit">保存</button>
+      </div>
     </form>
     <div class="table-wrap">
       <table>
@@ -40,19 +48,27 @@
   </section>
 
   <section>
-    <h2>デフォルト効果音</h2>
+    <div class="section-head">
+      <h2>デフォルト効果音</h2>
+    </div>
     <p id="default-status" class="notice"></p>
-    <form id="default-form" class="grid">
-      <label>入室デフォルト <input name="enterSound" type="file" accept="audio/*" /></label>
-      <label>退室デフォルト <input name="leaveSound" type="file" accept="audio/*" /></label>
-      <button type="submit">保存</button>
+    <form id="default-form">
+      <div class="sound-grid">
+        <label class="file-box"><span>入室デフォルト</span><input name="enterSound" type="file" accept="audio/*" /></label>
+        <label class="file-box"><span>退室デフォルト</span><input name="leaveSound" type="file" accept="audio/*" /></label>
+      </div>
+      <div class="actions">
+        <button type="submit">保存</button>
+      </div>
     </form>
   </section>
 
   <section>
-    <h2>API キー</h2>
-    <form id="key-form" class="row">
-      <input name="name" placeholder="リーダー名" value="tablet-1" />
+    <div class="section-head">
+      <h2>API キー</h2>
+    </div>
+    <form id="key-form" class="key-row">
+      <label class="field"><span>リーダー名</span><input name="name" placeholder="tablet-1" value="tablet-1" /></label>
       <button type="submit">発行</button>
     </form>
     <p id="new-key" class="notice"></p>

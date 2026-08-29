@@ -1,8 +1,11 @@
 async function loadMembers() {
   const data = await api("/api/members");
   document.querySelector("#members").innerHTML = data.members
-    .map((row) => "<tr><td>" + row.studentId + "</td><td>" + (row.displayName || "") + "</td><td>" + (row.note || "") + "</td><td>" + (row.hasEnterSound ? "カスタム" : "デフォルト") + "</td><td>" + (row.hasLeaveSound ? "カスタム" : "デフォルト") + "</td></tr>")
+    .map((row) => "<tr><td>" + row.studentId + "</td><td>" + (row.displayName || "-") + "</td><td>" + (row.note || "-") + "</td><td>" + (row.hasEnterSound ? "カスタム" : "デフォルト") + "</td><td>" + (row.hasLeaveSound ? "カスタム" : "デフォルト") + "</td></tr>")
     .join("");
+  if (!data.members.length) {
+    document.querySelector("#members").innerHTML = '<tr><td class="empty" colspan="5">まだメンバーがいません</td></tr>';
+  }
 }
 
 async function loadDefaults() {
@@ -20,6 +23,9 @@ async function loadKeys() {
       return "<tr><td>" + row.name + "</td><td>" + row.key_prefix + "</td><td>" + (row.last_used_at || "-") + "</td><td>" + status + "</td></tr>";
     })
     .join("");
+  if (!data.apiKeys.length) {
+    document.querySelector("#api-keys").innerHTML = '<tr><td class="empty" colspan="4">まだ API キーがありません</td></tr>';
+  }
 }
 
 document.querySelector("#member-form").addEventListener("submit", async (event) => {

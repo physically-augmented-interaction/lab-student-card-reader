@@ -17,6 +17,9 @@ async function loadDashboard() {
   document.querySelector("#chart").innerHTML = data.daily
     .map((row) => '<div class="bar" title="' + row.date + " enter " + row.enters + '" style="height:' + Math.round((row.enters / max) * 100) + '%"></div>')
     .join("");
+  if (!data.members.length) {
+    document.querySelector("#member-stats").innerHTML = '<tr><td class="empty" colspan="5">この月の来室データはありません</td></tr>';
+  }
   document.querySelector("#member-stats").innerHTML = data.members
     .map((row) => "<tr><td>" + row.studentId + "</td><td>" + row.displayName + "</td><td>" + row.enters + "</td><td>" + row.leaves + "</td><td>" + row.lastVisitAt + "</td></tr>")
     .join("");
