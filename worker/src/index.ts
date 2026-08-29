@@ -11,6 +11,10 @@ type MemberRow = {
   note: string;
   sound_object_key: string | null;
   sound_content_type: string | null;
+  enter_sound_key: string | null;
+  enter_sound_type: string | null;
+  leave_sound_key: string | null;
+  leave_sound_type: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -141,7 +145,7 @@ async function requireApiKey(env: Env, request: Request): Promise<ApiKeyRow | Re
 
 async function ensureMember(env: Env, studentId: string): Promise<MemberRow> {
   const existing = await env.DB.prepare(
-    "SELECT student_id, display_name, note, sound_object_key, sound_content_type, created_at, updated_at FROM members WHERE student_id = ?",
+    "SELECT student_id, display_name, note, sound_object_key, sound_content_type, enter_sound_key, enter_sound_type, leave_sound_key, leave_sound_type, created_at, updated_at FROM members WHERE student_id = ?",
   )
     .bind(studentId)
     .first<MemberRow>();
@@ -158,6 +162,10 @@ async function ensureMember(env: Env, studentId: string): Promise<MemberRow> {
     note: "",
     sound_object_key: null,
     sound_content_type: null,
+    enter_sound_key: null,
+    enter_sound_type: null,
+    leave_sound_key: null,
+    leave_sound_type: null,
     created_at: createdAt,
     updated_at: createdAt,
   };
@@ -180,10 +188,43 @@ function memberDto(member: MemberRow) {
     studentId: member.student_id,
     displayName: member.display_name,
     note: member.note,
-    hasSound: Boolean(member.sound_object_key),
-    soundContentType: member.sound_content_type,
+    hasEnterSound: Boolean(member.enter_sound_key || member.sound_object_key),
+    hasLeaveSound: Boolean(member.leave_sound_key),
     createdAt: member.created_at,
     updatedAt: member.updated_at,
+  };
+}
+
+function memberSound(member: MemberRow, eventType: "enter" | "leave") {
+  if (eventType === "leave") {
+    return { key: member.leave_sound_key, contentType: member.leave_sound_type, source: member.leave_sound_key ? "member" : "default" as const };
+  }
+  const key = member.enter_sound_key || member.sound_object_key;
+  const contentType = member.enter_sound_type || member.sound_content_type;
+  return { key, contentType, source: key ? "member" : "default" as const };
+}
+
+async function settingMap(env: Env): Promise<Record<string, string>> {
+  const result = await env.DB.prepare("SELECT key, value FROM settings").all<{ key: string; value: string }>();
+  const map: Record<string, string> = {};
+  for (const row of result.results || []) map[row.key] = row.value;
+  return map;
+}
+
+async function resolvedSound(env: Env, member: MemberRow, eventType: "enter" | "leave") {
+  const own = memberSound(member, eventType);
+  if (own.key) {
+    return { key: own.key, contentType: own.contentType, source: "member" as const, url: "/api/sounds/" + eventType + "/" + member.student_id };
+  }
+  const settings = await settingMap(env);
+  const prefix = eventType === "enter" ? "default_enter_sound" : "default_leave_sound";
+  const key = settings[prefix + "_key"] || "";
+  if (!key) return { key: null, contentType: null, source: "none" as const, url: null };
+  return {
+    key,
+    contentType: settings[prefix + "_type"] || "audio/mpeg",
+    source: "default" as const,
+    url: "/api/sounds/default/" + eventType,
   };
 }
 
@@ -209,26 +250,28 @@ async function handleScan(env: Env, request: Request): Promise<Response> {
     .bind(visitId, studentId, eventType, occurredAt, body && body.deviceId ? body.deviceId : null, body && body.idm ? body.idm : null)
     .run();
 
+  const sound = await resolvedSound(env, member, eventType);
   return json({
     visitId,
     studentId,
     displayName: member.display_name || studentId,
     eventType,
     occurredAt,
-    soundUrl: member.sound_object_key ? "/api/members/" + studentId + "/sound" : null,
+    soundUrl: sound.url,
+    soundSource: sound.source,
   });
 }
 
 async function listMembers(env: Env): Promise<Response> {
   const result = await env.DB.prepare(
-    "SELECT student_id, display_name, note, sound_object_key, sound_content_type, created_at, updated_at FROM members ORDER BY student_id",
+    "SELECT student_id, display_name, note, sound_object_key, sound_content_type, enter_sound_key, enter_sound_type, leave_sound_key, leave_sound_type, created_at, updated_at FROM members ORDER BY student_id",
   ).all<MemberRow>();
   return json({ members: (result.results || []).map(memberDto) });
 }
 
 async function getMember(env: Env, studentId: string): Promise<Response> {
   const member = await env.DB.prepare(
-    "SELECT student_id, display_name, note, sound_object_key, sound_content_type, created_at, updated_at FROM members WHERE student_id = ?",
+    "SELECT student_id, display_name, note, sound_object_key, sound_content_type, enter_sound_key, enter_sound_type, leave_sound_key, leave_sound_type, created_at, updated_at FROM members WHERE student_id = ?",
   )
     .bind(studentId)
     .first<MemberRow>();
@@ -251,9 +294,18 @@ async function upsertMember(env: Env, studentId: string, request: Request): Prom
   });
 }
 
-async function uploadSound(env: Env, studentId: string, request: Request): Promise<Response> {
+async function requireSounds(env: Env): Promise<R2Bucket | Response> {
   if (!env.SOUNDS) return badRequest("R2 is not enabled yet", 503);
-  await ensureMember(env, studentId);
+  return env.SOUNDS;
+}
+
+function parseEventType(value: string | null): "enter" | "leave" | null {
+  return value === "enter" || value === "leave" ? value : null;
+}
+
+async function putAudio(env: Env, key: string, request: Request): Promise<{ contentType: string } | Response> {
+  const sounds = await requireSounds(env);
+  if (sounds instanceof Response) return sounds;
   const contentType = request.headers.get("content-type") || "application/octet-stream";
   if (!contentType.startsWith("audio/") && contentType !== "application/octet-stream") {
     return badRequest("audio content-type required");
@@ -261,29 +313,81 @@ async function uploadSound(env: Env, studentId: string, request: Request): Promi
   const body = await request.arrayBuffer();
   if (body.byteLength === 0) return badRequest("empty file");
   if (body.byteLength > 5 * 1024 * 1024) return badRequest("sound must be 5MB or smaller");
-  const key = "sounds/" + studentId;
-  await env.SOUNDS.put(key, body, { httpMetadata: { contentType } });
-  const updatedAt = nowIso();
-  await env.DB.prepare(
-    "UPDATE members SET sound_object_key = ?, sound_content_type = ?, updated_at = ? WHERE student_id = ?",
-  )
-    .bind(key, contentType, updatedAt, studentId)
-    .run();
-  return json({ ok: true, soundUrl: "/api/members/" + studentId + "/sound" });
+  await sounds.put(key, body, { httpMetadata: { contentType } });
+  return { contentType };
 }
 
-async function getSound(env: Env, studentId: string): Promise<Response> {
-  if (!env.SOUNDS) return badRequest("R2 is not enabled yet", 503);
-  const member = await env.DB.prepare("SELECT sound_object_key, sound_content_type FROM members WHERE student_id = ?")
-    .bind(studentId)
-    .first<Pick<MemberRow, "sound_object_key" | "sound_content_type">>();
-  if (!member || !member.sound_object_key) return badRequest("sound not found", 404);
-  const object = await env.SOUNDS.get(member.sound_object_key);
+async function uploadMemberSound(env: Env, studentId: string, eventType: "enter" | "leave", request: Request): Promise<Response> {
+  await ensureMember(env, studentId);
+  const key = "sounds/members/" + studentId + "/" + eventType;
+  const stored = await putAudio(env, key, request);
+  if (stored instanceof Response) return stored;
+  const updatedAt = nowIso();
+  if (eventType === "enter") {
+    await env.DB.prepare("UPDATE members SET enter_sound_key = ?, enter_sound_type = ?, sound_object_key = ?, sound_content_type = ?, updated_at = ? WHERE student_id = ?")
+      .bind(key, stored.contentType, key, stored.contentType, updatedAt, studentId)
+      .run();
+  } else {
+    await env.DB.prepare("UPDATE members SET leave_sound_key = ?, leave_sound_type = ?, updated_at = ? WHERE student_id = ?")
+      .bind(key, stored.contentType, updatedAt, studentId)
+      .run();
+  }
+  return json({ ok: true, eventType, soundUrl: "/api/sounds/" + eventType + "/" + studentId });
+}
+
+async function uploadDefaultSound(env: Env, eventType: "enter" | "leave", request: Request): Promise<Response> {
+  const key = "sounds/default/" + eventType;
+  const stored = await putAudio(env, key, request);
+  if (stored instanceof Response) return stored;
+  const prefix = eventType === "enter" ? "default_enter_sound" : "default_leave_sound";
+  const updatedAt = nowIso();
+  await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+    .bind(prefix + "_key", key, updatedAt)
+    .run();
+  await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+    .bind(prefix + "_type", stored.contentType, updatedAt)
+    .run();
+  return json({ ok: true, eventType, soundUrl: "/api/sounds/default/" + eventType });
+}
+
+async function getObjectSound(env: Env, key: string | null, contentType: string | null): Promise<Response> {
+  const sounds = await requireSounds(env);
+  if (sounds instanceof Response) return sounds;
+  if (!key) return badRequest("sound not found", 404);
+  const object = await sounds.get(key);
   if (!object) return badRequest("sound not found", 404);
   const headers = new Headers();
-  headers.set("content-type", member.sound_content_type || object.httpMetadata?.contentType || "audio/mpeg");
+  headers.set("content-type", contentType || object.httpMetadata?.contentType || "audio/mpeg");
   headers.set("cache-control", "private, max-age=60");
   return new Response(object.body, { headers });
+}
+
+async function getMemberSound(env: Env, studentId: string, eventType: "enter" | "leave"): Promise<Response> {
+  const member = await env.DB.prepare("SELECT " + "student_id, display_name, note, sound_object_key, sound_content_type, enter_sound_key, enter_sound_type, leave_sound_key, leave_sound_type, created_at, updated_at" + " FROM members WHERE student_id = ?")
+    .bind(studentId)
+    .first<MemberRow>();
+  if (!member) return badRequest("member not found", 404);
+  const sound = memberSound(member, eventType);
+  if (sound.key) return getObjectSound(env, sound.key, sound.contentType);
+  const settings = await settingMap(env);
+  const prefix = eventType === "enter" ? "default_enter_sound" : "default_leave_sound";
+  return getObjectSound(env, settings[prefix + "_key"] || null, settings[prefix + "_type"] || null);
+}
+
+async function getDefaultSound(env: Env, eventType: "enter" | "leave"): Promise<Response> {
+  const settings = await settingMap(env);
+  const prefix = eventType === "enter" ? "default_enter_sound" : "default_leave_sound";
+  return getObjectSound(env, settings[prefix + "_key"] || null, settings[prefix + "_type"] || null);
+}
+
+async function getSettings(env: Env): Promise<Response> {
+  const settings = await settingMap(env);
+  return json({
+    defaults: {
+      enter: { hasSound: Boolean(settings.default_enter_sound_key), soundUrl: settings.default_enter_sound_key ? "/api/sounds/default/enter" : null },
+      leave: { hasSound: Boolean(settings.default_leave_sound_key), soundUrl: settings.default_leave_sound_key ? "/api/sounds/default/leave" : null },
+    },
+  });
 }
 
 async function dashboard(env: Env, request: Request): Promise<Response> {
@@ -416,14 +520,31 @@ export default {
       if (path === "/api/api-keys" && request.method === "GET") return listApiKeys(env);
       if (path === "/api/api-keys" && request.method === "POST") return createApiKey(env, request);
 
-      const memberMatch = path.match(/^\/api\/members\/([^/]+)(?:\/(sound))?$/);
+      if (path === "/api/settings" && request.method === "GET") return getSettings(env);
+
+      const defaultSoundMatch = path.match(/^\/api\/sounds\/default\/(enter|leave)$/);
+      if (defaultSoundMatch) {
+        const eventType = parseEventType(defaultSoundMatch[1]);
+        if (!eventType) return badRequest("invalid event type");
+        if (request.method === "GET") return getDefaultSound(env, eventType);
+        if (request.method === "PUT") return uploadDefaultSound(env, eventType, request);
+      }
+
+      const memberSoundMatch = path.match(/^\/api\/sounds\/(enter|leave)\/([^/]+)$/);
+      if (memberSoundMatch) {
+        const eventType = parseEventType(memberSoundMatch[1]);
+        const studentId = normalizeStudentId(decodeURIComponent(memberSoundMatch[2]));
+        if (!eventType || !studentId) return badRequest("invalid sound path");
+        if (request.method === "GET") return getMemberSound(env, studentId, eventType);
+        if (request.method === "PUT") return uploadMemberSound(env, studentId, eventType, request);
+      }
+
+      const memberMatch = path.match(/^\/api\/members\/([^/]+)$/);
       if (memberMatch) {
         const studentId = normalizeStudentId(decodeURIComponent(memberMatch[1]));
         if (!studentId) return badRequest("invalid studentId");
-        if (memberMatch[2] === "sound" && request.method === "GET") return getSound(env, studentId);
-        if (memberMatch[2] === "sound" && request.method === "PUT") return uploadSound(env, studentId, request);
-        if (!memberMatch[2] && request.method === "GET") return getMember(env, studentId);
-        if (!memberMatch[2] && request.method === "PUT") return upsertMember(env, studentId, request);
+        if (request.method === "GET") return getMember(env, studentId);
+        if (request.method === "PUT") return upsertMember(env, studentId, request);
       }
 
       const keyMatch = path.match(/^\/api\/api-keys\/([^/]+)\/revoke$/);

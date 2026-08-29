@@ -7,6 +7,7 @@ export type ScanResponse = {
   eventType: 'enter' | 'leave';
   occurredAt: string;
   soundUrl: string | null;
+  soundSource?: 'member' | 'default' | 'none';
 };
 
 type ConfigModule = {

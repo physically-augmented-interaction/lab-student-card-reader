@@ -10,6 +10,17 @@ async function api(path, options = {}) {
   return data;
 }
 
+async function uploadSound(path, file) {
+  if (!file) return;
+  const response = await fetch(path, {
+    method: "PUT",
+    headers: { "content-type": file.type || "audio/mpeg" },
+    body: file,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || response.statusText);
+}
+
 function summaryCard(label, value) {
   return '<div class="card">' + label + "<b>" + value + "</b></div>";
 }
@@ -34,8 +45,15 @@ async function loadDashboard() {
 async function loadMembers() {
   const data = await api("/api/members");
   document.querySelector("#members").innerHTML = data.members
-    .map((row) => "<tr><td>" + row.studentId + "</td><td>" + (row.displayName || "") + "</td><td>" + (row.note || "") + "</td><td>" + (row.hasSound ? "あり" : "-") + "</td></tr>")
+    .map((row) => "<tr><td>" + row.studentId + "</td><td>" + (row.displayName || "") + "</td><td>" + (row.note || "") + "</td><td>" + (row.hasEnterSound ? "カスタム" : "デフォルト") + "</td><td>" + (row.hasLeaveSound ? "カスタム" : "デフォルト") + "</td></tr>")
     .join("");
+}
+
+async function loadDefaults() {
+  const data = await api("/api/settings");
+  document.querySelector("#default-status").textContent =
+    "入室: " + (data.defaults.enter.hasSound ? "設定済み" : "未設定") +
+    " / 退室: " + (data.defaults.leave.hasSound ? "設定済み" : "未設定");
 }
 
 async function loadKeys() {
@@ -57,16 +75,20 @@ document.querySelector("#member-form").addEventListener("submit", async (event) 
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ displayName: form.displayName.value, note: form.note.value }),
   });
-  if (form.sound.files[0]) {
-    await fetch("/api/members/" + encodeURIComponent(studentId) + "/sound", {
-      method: "PUT",
-      headers: { "content-type": form.sound.files[0].type || "audio/mpeg" },
-      body: form.sound.files[0],
-    });
-  }
+  await uploadSound("/api/sounds/enter/" + encodeURIComponent(studentId), form.enterSound.files[0]);
+  await uploadSound("/api/sounds/leave/" + encodeURIComponent(studentId), form.leaveSound.files[0]);
   form.reset();
   await loadMembers();
   await loadDashboard();
+});
+
+document.querySelector("#default-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  await uploadSound("/api/sounds/default/enter", form.enterSound.files[0]);
+  await uploadSound("/api/sounds/default/leave", form.leaveSound.files[0]);
+  form.reset();
+  await loadDefaults();
 });
 
 document.querySelector("#key-form").addEventListener("submit", async (event) => {
@@ -90,6 +112,6 @@ document.querySelector("#api-keys").addEventListener("click", async (event) => {
 
 monthInput.addEventListener("change", loadDashboard);
 
-Promise.all([loadDashboard(), loadMembers(), loadKeys()]).catch((error) => {
+Promise.all([loadDashboard(), loadMembers(), loadDefaults(), loadKeys()]).catch((error) => {
   document.querySelector("#new-key").textContent = error.message;
 });

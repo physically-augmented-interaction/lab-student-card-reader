@@ -8,7 +8,13 @@ Cloudflare Workers + D1 + R2. Web UI is intended to sit behind Cloudflare Access
 - api_keys: hashed token, prefix, revoke timestamp, last used
 - visits: enter/leave events keyed by student_id
 
-Scan toggles enter/leave from the last visit. Sounds are stored in R2 as sounds/{studentId}.
+Scan toggles enter/leave from the last visit.
+
+Sounds:
+
+- default enter/leave: sounds/default/{enter|leave}
+- member custom enter/leave: sounds/members/{studentId}/{enter|leave}
+- scan returns the member custom sound if set, otherwise the default sound for that event
 
 ## Local
 
