@@ -58,3 +58,14 @@ Android アプリは gradle プロパティか環境変数で接続します。
     LAB_DEVICE_ID=tablet-1
 
 設定画面で API キーを発行すると QR が出ます。アプリの歯車 > 「カメラで QR を読む」で同じ内容を読み取れます。JSON の手貼りも残しています。
+
+## CI / Release
+
+GitHub Actions の CI は `main` と pull request で、アプリの型チェック / Jest、Worker の型チェック、Python ツールの compile、Android debug APK の組み立てを回します。
+
+Android APK は `release/v*` タグを push するとビルドして GitHub Release に載せます。
+
+    git tag release/v0.1.0
+    git push origin release/v0.1.0
+
+`release/v1.2.3` なら `versionName=1.2.3`、`versionCode=10203` になります。いまの release 署名は debug keystore です。API キーは APK に焼き込まず、端末側の QR / 設定から入れます。

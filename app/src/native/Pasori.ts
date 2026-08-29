@@ -56,13 +56,13 @@ export const Pasori = {
     if (!emitter) {
       return { remove() {} };
     }
-    return emitter.addListener('onCard', listener);
+    return emitter.addListener('onCard', (event: Object) => listener(event as CardEvent));
   },
 
   onReader(listener: (event: ReaderEvent) => void) {
     if (!emitter) {
       return { remove() {} };
     }
-    return emitter.addListener('onReader', listener);
+    return emitter.addListener('onReader', (event: Object) => listener(event as ReaderEvent));
   },
 };
