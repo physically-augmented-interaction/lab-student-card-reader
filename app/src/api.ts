@@ -1,4 +1,4 @@
-import { NativeModules } from 'react-native';
+import { loadConfig, playNativeSound, type AppConfig } from './config';
 
 export type ScanResponse = {
   visitId: string;
@@ -10,42 +10,31 @@ export type ScanResponse = {
   soundSource?: 'member' | 'default' | 'none';
 };
 
-type ConfigModule = {
-  API_BASE_URL?: string;
-  API_KEY?: string;
-  DEVICE_ID?: string;
-};
-
-const config = (NativeModules.PasoriConfig || {}) as ConfigModule;
-
-export const API_BASE_URL = (() => {
-  const value = config.API_BASE_URL || '';
-  return value.endsWith('/') ? value.slice(0, -1) : value;
-})();
-export const API_KEY = config.API_KEY || '';
-export const DEVICE_ID = config.DEVICE_ID || 'tablet-1';
-
-export function isApiConfigured(): boolean {
-  return Boolean(API_BASE_URL && API_KEY);
+export function isApiConfigured(config?: AppConfig): boolean {
+  const current = config;
+  return Boolean(current?.apiBaseUrl && current?.apiKey);
 }
 
 export async function scanCard(input: {
   studentId: string;
   idm?: string;
+  source?: string;
 }): Promise<ScanResponse> {
-  if (!isApiConfigured()) {
-    return Promise.reject(new Error('API is not configured'));
+  const config = await loadConfig();
+  if (!isApiConfigured(config)) {
+    throw new Error('API URL / API キーが未設定です');
   }
-  const response = await fetch(API_BASE_URL + '/api/scan', {
+  const response = await fetch(config.apiBaseUrl + '/api/scan', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: 'Bearer ' + API_KEY,
+      authorization: 'Bearer ' + config.apiKey,
     },
     body: JSON.stringify({
       studentId: input.studentId,
       idm: input.idm,
-      deviceId: DEVICE_ID,
+      deviceId: config.deviceId,
+      source: input.source || 'reader',
     }),
   });
   const data = (await response.json()) as ScanResponse & { error?: string };
@@ -55,15 +44,17 @@ export async function scanCard(input: {
   return data;
 }
 
-export function soundUrl(path: string | null): string | null {
+export function soundUrl(path: string | null, apiBaseUrl?: string): string | null {
   if (!path) return null;
   if (path.startsWith('http')) return path;
-  return API_BASE_URL + path;
+  return (apiBaseUrl || '') + path;
 }
 
 export async function playMemberSound(path: string | null): Promise<void> {
-  const url = soundUrl(path);
-  const player = config as ConfigModule & { playSound?: (url: string) => Promise<boolean> };
-  if (!url || !player.playSound) return;
-  await player.playSound(url);
+  const config = await loadConfig();
+  const url = soundUrl(path, config.apiBaseUrl);
+  const play = playNativeSound;
+  if (!url) return;
+  const nativePlay = play(url);
+  if (nativePlay) await nativePlay;
 }

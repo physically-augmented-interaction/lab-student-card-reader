@@ -235,9 +235,11 @@ async function handleScan(env: Env, request: Request): Promise<Response> {
     studentId?: string;
     idm?: string;
     deviceId?: string;
+    source?: string;
   } | null;
   const studentId = normalizeStudentId(body ? body.studentId : null);
   if (!studentId) return badRequest("studentId is required");
+  const source = body && body.source === "demo" ? "demo" : "reader";
 
   const member = await ensureMember(env, studentId);
   const previous = await lastVisit(env, studentId);
@@ -245,9 +247,9 @@ async function handleScan(env: Env, request: Request): Promise<Response> {
   const occurredAt = nowIso();
   const visitId = crypto.randomUUID();
   await env.DB.prepare(
-    "INSERT INTO visits (id, student_id, event_type, occurred_at, source, device_id, idm) VALUES (?, ?, ?, ?, 'reader', ?, ?)",
+    "INSERT INTO visits (id, student_id, event_type, occurred_at, source, device_id, idm) VALUES (?, ?, ?, ?, ?, ?, ?)",
   )
-    .bind(visitId, studentId, eventType, occurredAt, body && body.deviceId ? body.deviceId : null, body && body.idm ? body.idm : null)
+    .bind(visitId, studentId, eventType, occurredAt, source, body && body.deviceId ? body.deviceId : null, body && body.idm ? body.idm : null)
     .run();
 
   const sound = await resolvedSound(env, member, eventType);
