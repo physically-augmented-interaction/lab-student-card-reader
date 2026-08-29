@@ -42,7 +42,7 @@ flowchart LR
   worker --> r2[(R2 効果音)]
   worker -->|enter / leave と soundUrl| app
   app -->|GET soundUrl| worker
-  web[管理 Web] -->|同一オリジン /api/*| worker
+  web[管理 Web] -->|同一オリジン /api/＊| worker
 ```
 
 読取時の処理はだいたい次のとおりです。
