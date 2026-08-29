@@ -49,7 +49,7 @@ Cloudflare Workers + D1。Web 管理画面はのちのち Cloudflare Access で�
     npx wrangler d1 migrations apply lab-attendance --remote
     npx wrangler deploy
 
-管理画面で名前・効果音・月次ダッシュボード・API キー発行ができます。効果音用 R2 は Cloudflare ダッシュボードで R2 を有効化したあと、bucket lab-attendance-sounds を作って wrangler.jsonc の binding を戻してください。
+ダッシュボードは / 、設定（メンバー追加・効果音・API キー）は /settings/ です。効果音用 R2 は Cloudflare ダッシュボードで R2 を有効化したあと、bucket lab-attendance-sounds を作って wrangler.jsonc の binding を戻してください。
 
 Android アプリは gradle プロパティか環境変数で接続します。
 

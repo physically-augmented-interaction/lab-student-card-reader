@@ -3,21 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lab Attendance</title>
+  <title>入退室ダッシュボード</title>
   <link rel="stylesheet" href="/admin.css" />
 </head>
 <body>
   <header>
     <div>
       <p class="kicker">Manabe Lab</p>
-      <h1>入退室管理</h1>
+      <h1>入退室ダッシュボード</h1>
     </div>
-    <label class="month">
-      対象月
-      <input id="month" type="month" />
-    </label>
+    <div class="header-actions">
+      <nav>
+        <a class="active" href="/">ダッシュボード</a>
+        <a href="/settings/">設定</a>
+      </nav>
+      <label class="month">
+        対象月
+        <input id="month" type="month" />
+      </label>
+    </div>
   </header>
 
+  <p id="error" class="notice"></p>
   <section class="cards" id="summary"></section>
 
   <section>
@@ -33,53 +40,7 @@
     </div>
   </section>
 
-  <section>
-    <h2>メンバー</h2>
-    <form id="member-form" class="grid">
-      <input name="studentId" placeholder="学籍番号" required />
-      <input name="displayName" placeholder="名前" />
-      <input name="note" placeholder="メモ" />
-      <label>入室音 <input name="enterSound" type="file" accept="audio/*" /></label>
-      <label>退室音 <input name="leaveSound" type="file" accept="audio/*" /></label>
-      <button type="submit">保存</button>
-    </form>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>学籍番号</th><th>名前</th><th>メモ</th><th>入室音</th><th>退室音</th></tr>
-        </thead>
-        <tbody id="members"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section>
-    <h2>デフォルト効果音</h2>
-    <p id="default-status" class="notice"></p>
-    <form id="default-form" class="grid">
-      <label>入室デフォルト <input name="enterSound" type="file" accept="audio/*" /></label>
-      <label>退室デフォルト <input name="leaveSound" type="file" accept="audio/*" /></label>
-      <button type="submit">保存</button>
-    </form>
-  </section>
-
-  <section>
-    <h2>API キー</h2>
-    <form id="key-form" class="row">
-      <input name="name" placeholder="リーダー名" value="tablet-1" />
-      <button type="submit">発行</button>
-    </form>
-    <p id="new-key" class="notice"></p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>名前</th><th>prefix</th><th>最終利用</th><th></th></tr>
-        </thead>
-        <tbody id="api-keys"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <script src="/admin.js"></script>
+  <script src="/common.js"></script>
+  <script src="/dashboard.js"></script>
 </body>
 </html>

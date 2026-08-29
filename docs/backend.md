@@ -23,7 +23,7 @@ Sounds:
     npx wrangler d1 migrations apply lab-attendance --local
     npx wrangler dev
 
-Open http://127.0.0.1:8787 to manage names, sounds, monthly dashboard, and API keys.
+Open http://127.0.0.1:8787 for the monthly dashboard and /settings/ for members, default sounds, and API keys.
 
 ## Remote
 
