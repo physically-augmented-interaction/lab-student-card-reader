@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
+  Modal,
   Pressable,
   ScrollView,
   StatusBar,
@@ -11,30 +10,31 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { Pasori, type CardEvent, type ReaderEvent } from './src/native/Pasori';
-import { isApiConfigured, playMemberSound, scanCard, type ScanResponse } from './src/api';
+import { Pasori, type ReaderEvent } from './src/native/Pasori';
+import { fetchPresent, isApiConfigured, playMemberSound, scanCard, type PresentMember, type ScanResponse } from './src/api';
 import { loadConfig, nativeConfig, saveConfig, type AppConfig } from './src/config';
+import { applyPairingPayload } from './src/qr';
 
-function statusLabel(event: ReaderEvent | null): string {
-  if (!Pasori.isAvailable()) {
-    return 'Android USB Host 専用です';
-  }
-  if (!event) {
-    return 'リーダーを待っています';
-  }
+const DEMO_PASSWORD = 'test';
+
+function readerConnected(event: ReaderEvent | null): boolean {
+  return event?.status === 'attached';
+}
+
+function readerStatusText(event: ReaderEvent | null): string {
+  if (!Pasori.isAvailable()) return 'この端末では USB Host を使えません';
+  if (!event) return 'リーダーを待っています';
   switch (event.status) {
     case 'attached':
-      return 'RC-S380 接続済み。学生証をタッチしてください';
+      return 'リーダー接続済み';
     case 'detached':
-      return 'RC-S380 が未接続です';
+      return 'リーダー未接続';
     case 'permission-required':
-      return 'USB 権限を許可してください';
+      return 'USB 権限の許可が必要です';
     case 'permission-denied':
       return 'USB 権限が拒否されました';
     case 'error':
       return event.message;
-    case 'stopped':
-      return '読み取りを停止しました';
     default:
       return event.message;
   }
@@ -42,12 +42,25 @@ function statusLabel(event: ReaderEvent | null): string {
 
 function App() {
   const [reader, setReader] = useState<ReaderEvent | null>(null);
-  const [card, setCard] = useState<CardEvent | null>(null);
   const [scan, setScan] = useState<ScanResponse | null>(null);
+  const [present, setPresent] = useState<PresentMember[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [demoUnlocked, setDemoUnlocked] = useState(false);
+  const [demoPassword, setDemoPassword] = useState('');
   const [demoId, setDemoId] = useState('AE19051');
+  const [qrText, setQrText] = useState('');
   const [config, setConfig] = useState<AppConfig>(nativeConfig());
+
+  const refreshPresent = useCallback(async () => {
+    try {
+      const people = await fetchPresent();
+      setPresent(people);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
 
   const sendScan = useCallback(async (studentId: string, idm?: string, source: 'reader' | 'demo' = 'reader') => {
     setBusy(true);
@@ -55,19 +68,23 @@ function App() {
     try {
       const result = await scanCard({ studentId, idm, source });
       setScan(result);
+      if (result.present) setPresent(result.present);
       await playMemberSound(result.soundUrl);
+      await refreshPresent();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [refreshPresent]);
 
   useEffect(() => {
-    loadConfig().then(setConfig).catch(() => {});
+    let cancelled = false;
+    loadConfig().then(value => {
+      if (!cancelled) setConfig(value);
+    }).catch(() => {});
+    refreshPresent().catch(() => {});
     const cardSub = Pasori.onCard(event => {
-      setCard(event);
-      setDemoId(event.studentId);
       sendScan(event.studentId, event.idm, 'reader');
     });
     const readerSub = Pasori.onReader(event => {
@@ -76,69 +93,83 @@ function App() {
         setError(event.message);
       }
     });
-    let cancelled = false;
     Pasori.start().catch(err => {
-      if (!cancelled) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
+      if (!cancelled) setError(err instanceof Error ? err.message : String(err));
     });
+    const timer = setInterval(() => {
+      if (!cancelled) refreshPresent().catch(() => {});
+    }, 15000);
     return () => {
       cancelled = true;
       cardSub.remove();
       readerSub.remove();
+      clearInterval(timer);
       Pasori.stop().catch(() => {});
     };
-  }, [sendScan]);
+  }, [refreshPresent, sendScan]);
+
+  const headline = scan?.displayName || '学生証をタッチ';
+  const stateLabel = useMemo(() => {
+    if (!scan) return '';
+    return scan.eventType === 'enter' ? '入室' : '退室';
+  }, [scan]);
+  const disconnected = !readerConnected(reader);
 
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safe}>
         <StatusBar barStyle="light-content" />
-        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-            <Text style={styles.kicker}>Lab Student Card Reader</Text>
-            <Text style={styles.status}>{statusLabel(reader)}</Text>
-            <View style={styles.cardBox}>
-              <Text style={styles.cardLabel}>学籍番号</Text>
-              <Text style={styles.studentId}>{card?.studentId ?? scan?.studentId ?? '--------'}</Text>
-              <Text style={styles.meta}>{scan?.displayName || '未登録'}</Text>
-              <Text style={styles.meta}>
-                {scan ? (scan.eventType === 'enter' ? '入室' : '退室') : 'サーバー未送信'}
-              </Text>
-              <Text style={styles.meta}>IDm {card?.idm ?? '-'}</Text>
-            </View>
+        <View style={styles.screen}>
+          <Pressable style={styles.gear} onPress={() => setSettingsOpen(true)}>
+            <Text style={styles.gearIcon}>⚙</Text>
+          </Pressable>
 
-            <View style={styles.cardBox}>
-              <Text style={styles.cardLabel}>デモ送信</Text>
-              <TextInput
-                value={demoId}
-                onChangeText={setDemoId}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                placeholder="AE19051"
-                placeholderTextColor="#6F8479"
-                style={styles.input}
-              />
+          <View style={styles.center}>
+            <Text style={styles.headline}>{headline}</Text>
+            {stateLabel ? <Text style={styles.state}>{stateLabel}</Text> : null}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+          </View>
+
+          <View style={styles.presentPane}>
+            <Text style={styles.presentTitle}>いまいる人</Text>
+            <ScrollView>
+              {present.length ? (
+                present.map(person => (
+                  <View key={person.studentId} style={styles.presentRow}>
+                    <Text style={styles.presentName}>{person.displayName}</Text>
+                    <Text style={styles.presentMeta}>{person.enteredAtLabel}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.presentMeta}>だれもいません</Text>
+              )}
+            </ScrollView>
+          </View>
+
+          {disconnected ? <Text style={styles.disconnected}>リーダー未接続</Text> : null}
+        </View>
+
+        <Modal visible={settingsOpen} animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
+          <SafeAreaView style={styles.safe}>
+            <ScrollView contentContainerStyle={styles.settings} keyboardShouldPersistTaps="handled">
+              <View style={styles.settingsHeader}>
+                <Text style={styles.settingsTitle}>設定</Text>
+                <Pressable onPress={() => setSettingsOpen(false)}>
+                  <Text style={styles.close}>閉じる</Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.cardLabel}>リーダー</Text>
+              <Text style={styles.meta}>{readerStatusText(reader)}</Text>
               <Pressable
-                style={[styles.button, busy && styles.buttonDisabled]}
-                disabled={busy}
+                style={styles.button}
                 onPress={() => {
-                  const studentId = demoId.trim().toUpperCase();
-                  setCard({
-                    studentId,
-                    idm: 'DEMO',
-                    rawHex: '',
-                    systemCode: 'DEMO',
-                    serviceCode: 'DEMO',
-                    timestamp: Date.now(),
-                  });
-                  sendScan(studentId, 'DEMO', 'demo');
+                  setError(null);
+                  Pasori.start().catch(err => setError(err instanceof Error ? err.message : String(err)));
                 }}>
-                <Text style={styles.buttonText}>{busy ? '送信中...' : 'この学籍番号を送信'}</Text>
+                <Text style={styles.buttonText}>リーダー再接続</Text>
               </Pressable>
-            </View>
 
-            <View style={styles.cardBox}>
               <Text style={styles.cardLabel}>API 設定</Text>
               <TextInput
                 value={config.apiBaseUrl}
@@ -159,7 +190,7 @@ function App() {
                 style={styles.input}
               />
               <Pressable
-                style={styles.secondaryButton}
+                style={styles.button}
                 onPress={() => {
                   saveConfig(config)
                     .then(() => setError(null))
@@ -167,74 +198,120 @@ function App() {
                 }}>
                 <Text style={styles.buttonText}>接続設定を保存</Text>
               </Pressable>
-              {!isApiConfigured(config) ? (
-                <Text style={styles.meta}>設定画面で発行した API キーを保存してください</Text>
-              ) : (
-                <Text style={styles.meta}>API 接続設定済み</Text>
-              )}
-            </View>
+              <Text style={styles.meta}>{isApiConfigured(config) ? 'API 接続設定済み' : 'API キー未設定'}</Text>
 
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={() => {
-                setError(null);
-                Pasori.start().catch(err => {
-                  setError(err instanceof Error ? err.message : String(err));
-                });
-              }}>
-              <Text style={styles.buttonText}>リーダー再接続</Text>
-            </Pressable>
-          </ScrollView>
-        </KeyboardAvoidingView>
+              <Text style={styles.cardLabel}>QR / JSON 読み取り</Text>
+              <TextInput
+                value={qrText}
+                onChangeText={setQrText}
+                autoCapitalize="none"
+                autoCorrect={false}
+                multiline
+                placeholder='{"apiBaseUrl":"...","apiKey":"ltn_..."}'
+                placeholderTextColor="#6F8479"
+                style={[styles.input, styles.multiline]}
+              />
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => {
+                  applyPairingPayload(qrText)
+                    .then(next => {
+                      setConfig(next);
+                      setQrText('');
+                      setError(null);
+                    })
+                    .catch(err => setError(err instanceof Error ? err.message : String(err)));
+                }}>
+                <Text style={styles.buttonText}>読み取った設定を適用</Text>
+              </Pressable>
+
+              <Text style={styles.cardLabel}>デモ送信</Text>
+              {!demoUnlocked ? (
+                <>
+                  <TextInput
+                    value={demoPassword}
+                    onChangeText={setDemoPassword}
+                    secureTextEntry
+                    placeholder="パスワード"
+                    placeholderTextColor="#6F8479"
+                    style={styles.input}
+                  />
+                  <Pressable
+                    style={styles.secondaryButton}
+                    onPress={() => {
+                      if (demoPassword === DEMO_PASSWORD) {
+                        setDemoUnlocked(true);
+                        setError(null);
+                      } else {
+                        setError('デモパスワードが違います');
+                      }
+                    }}>
+                    <Text style={styles.buttonText}>デモ解除</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <TextInput
+                    value={demoId}
+                    onChangeText={setDemoId}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    placeholder="AE19051"
+                    placeholderTextColor="#6F8479"
+                    style={styles.input}
+                  />
+                  <Pressable
+                    style={[styles.button, busy && styles.buttonDisabled]}
+                    disabled={busy}
+                    onPress={() => sendScan(demoId.trim().toUpperCase(), 'DEMO', 'demo')}>
+                    <Text style={styles.buttonText}>{busy ? '送信中...' : 'この学籍番号を送信'}</Text>
+                  </Pressable>
+                </>
+              )}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   safe: { flex: 1, backgroundColor: '#101418' },
-  container: {
-    paddingHorizontal: 24,
-    paddingVertical: 24,
-    gap: 16,
-  },
-  kicker: {
-    color: '#8BE9B0',
-    fontSize: 16,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  status: {
-    color: '#F4F7F5',
-    fontSize: 24,
-    lineHeight: 32,
-    fontWeight: '600',
-  },
-  cardBox: {
-    backgroundColor: '#1B2420',
-    borderRadius: 24,
+  screen: { flex: 1, flexDirection: 'row' },
+  gear: { position: 'absolute', top: 12, left: 16, zIndex: 2, padding: 8 },
+  gearIcon: { color: '#C5D5CC', fontSize: 28 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  headline: { color: '#FFFFFF', fontSize: 72, fontWeight: '700', textAlign: 'center' },
+  state: { color: '#8BE9B0', fontSize: 36, marginTop: 12, fontWeight: '600' },
+  presentPane: {
+    width: 280,
+    backgroundColor: '#171E1B',
     padding: 20,
-    gap: 10,
+    borderLeftWidth: 1,
+    borderLeftColor: '#2B3732',
   },
-  cardLabel: { color: '#9BB0A4', fontSize: 16 },
-  studentId: {
-    color: '#FFFFFF',
-    fontSize: 48,
-    fontWeight: '700',
-    letterSpacing: 2,
-  },
+  presentTitle: { color: '#9BB0A4', fontSize: 16, marginBottom: 12 },
+  presentRow: { marginBottom: 14 },
+  presentName: { color: '#FFFFFF', fontSize: 22, fontWeight: '600' },
+  presentMeta: { color: '#9BB0A4', fontSize: 14, marginTop: 4 },
+  disconnected: { position: 'absolute', left: 20, bottom: 18, color: '#FF8A80', fontSize: 16 },
+  settings: { padding: 24, gap: 12 },
+  settingsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  settingsTitle: { color: '#FFFFFF', fontSize: 32, fontWeight: '700' },
+  close: { color: '#8BE9B0', fontSize: 18 },
+  cardLabel: { color: '#9BB0A4', fontSize: 16, marginTop: 8 },
   meta: { color: '#9BB0A4', fontSize: 16 },
-  error: { color: '#FF8A80', fontSize: 16 },
+  error: { color: '#FF8A80', fontSize: 18, marginTop: 16, textAlign: 'center' },
   input: {
-    backgroundColor: '#101418',
+    backgroundColor: '#171E1B',
     color: '#FFFFFF',
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 18,
   },
+  multiline: { minHeight: 88, textAlignVertical: 'top' },
   button: {
     alignSelf: 'flex-start',
     backgroundColor: '#2F6F4E',

@@ -88,6 +88,35 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
+function formatTokyoDateTime(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return get("year") + "/" + get("month") + "/" + get("day") + " " + get("hour") + ":" + get("minute");
+}
+
+function tokyoSessionCutoff(now = new Date()): Date {
+  const { y, m, d } = tokyoParts(now);
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "2-digit", hour12: false })
+      .formatToParts(now)
+      .find((part) => part.type === "hour")?.value ?? "0",
+  );
+  const cutoffDay = hour < 2 ? d - 1 : d;
+  const cutoffDate = new Date(Date.UTC(y, m - 1, cutoffDay, 2, 0, 0) - 9 * 60 * 60 * 1000);
+  return cutoffDate;
+}
+
 function tokyoMonthKey(date = new Date()): string {
   const { y, m } = tokyoParts(date);
   return y + "-" + pad(m);
@@ -253,6 +282,7 @@ async function handleScan(env: Env, request: Request): Promise<Response> {
     .run();
 
   const sound = await resolvedSound(env, member, eventType);
+  const present = await listPresent(env);
   return json({
     visitId,
     studentId,
@@ -261,6 +291,7 @@ async function handleScan(env: Env, request: Request): Promise<Response> {
     occurredAt,
     soundUrl: sound.url,
     soundSource: sound.source,
+    present,
   });
 }
 
@@ -458,23 +489,55 @@ async function dashboard(env: Env, request: Request): Promise<Response> {
       presentNow,
     },
     daily,
-    members: [...byStudent.values()].sort((a, b) => b.enters - a.enters || a.studentId.localeCompare(b.studentId)),
-    recent: rows.slice(-20).reverse(),
+    members: [...byStudent.values()]
+      .sort((a, b) => b.enters - a.enters || a.studentId.localeCompare(b.studentId))
+      .map((row) => ({ ...row, lastVisitAtLabel: formatTokyoDateTime(row.lastVisitAt) })),
+    recent: rows.slice(-20).reverse().map((row) => ({ ...row, occurredAtLabel: formatTokyoDateTime(row.occurred_at) })),
   });
 }
 
+function withTokyoTimes<T extends { lastVisitAt?: string; occurredAt?: string; createdAt?: string; last_used_at?: string | null; created_at?: string }>(row: T): T & { lastVisitAtLabel?: string; occurredAtLabel?: string; createdAtLabel?: string; lastUsedAtLabel?: string } {
+  return {
+    ...row,
+    lastVisitAtLabel: formatTokyoDateTime(row.lastVisitAt || row.created_at || null),
+    occurredAtLabel: formatTokyoDateTime(row.occurredAt || null),
+    createdAtLabel: formatTokyoDateTime(row.createdAt || row.created_at || null),
+    lastUsedAtLabel: formatTokyoDateTime(row.last_used_at || null),
+  };
+}
+
 async function currentPresentCount(env: Env): Promise<number> {
+  return (await listPresent(env)).length;
+}
+
+async function listPresent(env: Env): Promise<Array<{ studentId: string; displayName: string; enteredAt: string; enteredAtLabel: string }>> {
+  const cutoff = tokyoSessionCutoff().toISOString();
   const lastEvents = await env.DB.prepare(
-    "SELECT v.student_id, v.event_type FROM visits v JOIN (SELECT student_id, MAX(occurred_at) AS occurred_at FROM visits GROUP BY student_id) latest ON latest.student_id = v.student_id AND latest.occurred_at = v.occurred_at",
-  ).all<{ student_id: string; event_type: string }>();
-  return (lastEvents.results || []).filter((row) => row.event_type === "enter").length;
+    "SELECT v.student_id, v.event_type, v.occurred_at, COALESCE(m.display_name, '') AS display_name FROM visits v LEFT JOIN members m ON m.student_id = v.student_id JOIN (SELECT student_id, MAX(occurred_at) AS occurred_at FROM visits GROUP BY student_id) latest ON latest.student_id = v.student_id AND latest.occurred_at = v.occurred_at WHERE v.occurred_at >= ? ORDER BY v.occurred_at DESC",
+  )
+    .bind(cutoff)
+    .all<{ student_id: string; event_type: string; occurred_at: string; display_name: string }>();
+  return (lastEvents.results || [])
+    .filter((row) => row.event_type === "enter")
+    .map((row) => ({
+      studentId: row.student_id,
+      displayName: row.display_name || row.student_id,
+      enteredAt: row.occurred_at,
+      enteredAtLabel: formatTokyoDateTime(row.occurred_at),
+    }));
 }
 
 async function listApiKeys(env: Env): Promise<Response> {
   const result = await env.DB.prepare(
     "SELECT id, name, key_prefix, revoked_at, created_at, last_used_at FROM api_keys ORDER BY created_at DESC",
   ).all<Omit<ApiKeyRow, "key_hash">>();
-  return json({ apiKeys: result.results || [] });
+  return json({
+    apiKeys: (result.results || []).map((row) => ({
+      ...row,
+      createdAtLabel: formatTokyoDateTime(row.created_at),
+      lastUsedAtLabel: formatTokyoDateTime(row.last_used_at),
+    })),
+  });
 }
 
 async function createApiKey(env: Env, request: Request): Promise<Response> {
@@ -502,6 +565,32 @@ async function createApiKey(env: Env, request: Request): Promise<Response> {
   });
 }
 
+async function apiKeyQr(env: Env, id: string, request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const token = url.searchParams.get("token") || "";
+  if (!token.startsWith("ltn_")) return badRequest("token required");
+  const row = await env.DB.prepare("SELECT id, name, key_prefix FROM api_keys WHERE id = ? AND revoked_at IS NULL")
+    .bind(id)
+    .first<{ id: string; name: string; key_prefix: string }>();
+  if (!row) return badRequest("API key not found", 404);
+  if (!token.startsWith(row.key_prefix)) return badRequest("token does not match key", 400);
+  const payload = JSON.stringify({
+    v: 1,
+    apiBaseUrl: url.origin,
+    apiKey: token,
+    deviceId: row.name || "tablet-1",
+  });
+  const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=" + encodeURIComponent(payload);
+  const image = await fetch(qrUrl);
+  if (!image.ok) return badRequest("failed to create QR", 502);
+  return new Response(image.body, {
+    headers: {
+      "content-type": image.headers.get("content-type") || "image/png",
+      "cache-control": "no-store",
+    },
+  });
+}
+
 async function revokeApiKey(env: Env, id: string): Promise<Response> {
   const result = await env.DB.prepare("UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL")
     .bind(nowIso(), id)
@@ -519,6 +608,10 @@ export default {
       if (path === "/api/scan" && request.method === "POST") return handleScan(env, request);
       if (path === "/api/members" && request.method === "GET") return listMembers(env);
       if (path === "/api/dashboard" && request.method === "GET") return dashboard(env, request);
+      if (path === "/api/present" && request.method === "GET") {
+        const present = await listPresent(env);
+        return json({ present, cutoffAt: tokyoSessionCutoff().toISOString(), cutoffAtLabel: formatTokyoDateTime(tokyoSessionCutoff()) });
+      }
       if (path === "/api/api-keys" && request.method === "GET") return listApiKeys(env);
       if (path === "/api/api-keys" && request.method === "POST") return createApiKey(env, request);
 
@@ -551,6 +644,8 @@ export default {
 
       const keyMatch = path.match(/^\/api\/api-keys\/([^/]+)\/revoke$/);
       if (keyMatch && request.method === "POST") return revokeApiKey(env, keyMatch[1]);
+      const qrMatch = path.match(/^\/api\/api-keys\/([^/]+)\/qr$/);
+      if (qrMatch && request.method === "GET") return apiKeyQr(env, qrMatch[1], request);
       if (path.startsWith("/api/")) return badRequest("not found", 404);
       return env.ASSETS.fetch(request);
     } catch (error) {

@@ -20,7 +20,8 @@ async function loadKeys() {
   document.querySelector("#api-keys").innerHTML = data.apiKeys
     .map((row) => {
       const status = row.revoked_at ? "無効" : '<button data-revoke="' + row.id + '">失効</button>';
-      return "<tr><td>" + row.name + "</td><td>" + row.key_prefix + "</td><td>" + (row.last_used_at || "-") + "</td><td>" + status + "</td></tr>";
+      const qr = row.qrUrl ? '<div class="qr-box"><img alt="API QR" src="' + escapeHtml(row.qrUrl) + '" /></div>' : "";
+      return "<tr><td>" + escapeHtml(row.name) + "</td><td>" + escapeHtml(row.key_prefix) + "</td><td>" + escapeHtml(row.lastUsedAtLabel || row.last_used_at || "-") + "</td><td>" + status + qr + "</td></tr>";
     })
     .join("");
   if (!data.apiKeys.length) {
@@ -73,6 +74,14 @@ document.querySelector("#key-form").addEventListener("submit", async (event) => 
       body: JSON.stringify({ name: form.name.value }),
     });
     document.querySelector("#new-key").textContent = "発行したキー: " + data.apiKey.token + "  （再表示できません）";
+    const qrBox = document.querySelector("#new-key-qr");
+    const payload = JSON.stringify({
+      v: 1,
+      apiBaseUrl: location.origin,
+      apiKey: data.apiKey.token,
+      deviceId: form.name.value || "tablet-1",
+    });
+    qrBox.innerHTML = '<img alt="API QR" src="/api/api-keys/' + encodeURIComponent(data.apiKey.id) + '/qr?token=' + encodeURIComponent(data.apiKey.token) + '" /><pre>' + escapeHtml(payload) + "</pre>";
     await loadKeys();
   } catch (error) {
     document.querySelector("#new-key").textContent = error.message;

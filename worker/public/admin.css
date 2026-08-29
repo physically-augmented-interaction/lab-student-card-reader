@@ -182,6 +182,19 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; }
 .notice { color: var(--accent); min-height: 1.4em; margin: 0 0 12px; }
 .key-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
 
+.qr-box { margin-top: 12px; }
+.qr-box img { width: 180px; height: 180px; background: white; border-radius: 16px; padding: 8px; }
+
+.qr-box pre {
+  margin-top: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--panel-2);
+  padding: 12px;
+  border-radius: 12px;
+  color: var(--muted);
+}
+
 @media (max-width: 860px) {
   header, .section-head, .key-row { display: grid; }
   .cards, .form-grid, .sound-grid { grid-template-columns: 1fr; }

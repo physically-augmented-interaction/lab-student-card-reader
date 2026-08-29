@@ -8,6 +8,14 @@ export type ScanResponse = {
   occurredAt: string;
   soundUrl: string | null;
   soundSource?: 'member' | 'default' | 'none';
+  present?: PresentMember[];
+};
+
+export type PresentMember = {
+  studentId: string;
+  displayName: string;
+  enteredAt: string;
+  enteredAtLabel: string;
 };
 
 export function isApiConfigured(config?: AppConfig): boolean {
@@ -57,4 +65,17 @@ export async function playMemberSound(path: string | null): Promise<void> {
   if (!url) return;
   const nativePlay = play(url);
   if (nativePlay) await nativePlay;
+}
+
+export async function fetchPresent(): Promise<PresentMember[]> {
+  const config = await loadConfig();
+  if (!config.apiBaseUrl) return [];
+  const response = await fetch(config.apiBaseUrl + '/api/present', {
+    headers: config.apiKey ? { authorization: 'Bearer ' + config.apiKey } : undefined,
+  });
+  const data = (await response.json()) as { present?: PresentMember[]; error?: string };
+  if (!response.ok) {
+    throw new Error(data.error || 'present fetch failed');
+  }
+  return data.present || [];
 }

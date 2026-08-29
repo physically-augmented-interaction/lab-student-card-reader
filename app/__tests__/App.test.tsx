@@ -7,3 +7,7 @@ test('renders waiting screen', async () => {
     ReactTestRenderer.create(<App />);
   });
 });
+
+afterEach(() => {
+  jest.clearAllTimers();
+});

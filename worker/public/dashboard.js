@@ -21,7 +21,7 @@ async function loadDashboard() {
     document.querySelector("#member-stats").innerHTML = '<tr><td class="empty" colspan="5">この月の来室データはありません</td></tr>';
   }
   document.querySelector("#member-stats").innerHTML = data.members
-    .map((row) => "<tr><td>" + row.studentId + "</td><td>" + row.displayName + "</td><td>" + row.enters + "</td><td>" + row.leaves + "</td><td>" + row.lastVisitAt + "</td></tr>")
+    .map((row) => "<tr><td>" + escapeHtml(row.studentId) + "</td><td>" + escapeHtml(row.displayName) + "</td><td>" + row.enters + "</td><td>" + row.leaves + "</td><td>" + escapeHtml(row.lastVisitAtLabel || row.lastVisitAt) + "</td></tr>")
     .join("");
 }
 
