@@ -6,6 +6,7 @@ type NativeConfig = {
   API_KEY?: string;
   DEVICE_ID?: string;
   playSound?: (url: string) => Promise<boolean>;
+  scanQr?: () => Promise<string>;
 };
 
 export type AppConfig = {
@@ -59,4 +60,20 @@ export async function saveConfig(config: AppConfig): Promise<void> {
 export function playNativeSound(url: string): Promise<boolean> | null {
   if (!native.playSound) return null;
   return native.playSound(url);
+}
+
+export function scanNativeQr(): Promise<string> {
+  if (!native.scanQr) {
+    return Promise.reject(new Error('この端末では QR カメラを使えません'));
+  }
+  return native.scanQr().catch(error => {
+    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: string }).code || '') : '';
+    const message = error instanceof Error ? error.message : String(error);
+    if (code === 'QR_CANCELLED' || message.toLowerCase().includes('cancel')) {
+      const cancelled = new Error('cancelled');
+      cancelled.name = 'QRCancelled';
+      throw cancelled;
+    }
+    throw error instanceof Error ? error : new Error(message);
+  });
 }

@@ -12,7 +12,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Pasori, type ReaderEvent } from './src/native/Pasori';
 import { fetchPresent, isApiConfigured, playMemberSound, scanCard, type PresentMember, type ScanResponse } from './src/api';
-import { loadConfig, nativeConfig, saveConfig, type AppConfig } from './src/config';
+import { loadConfig, nativeConfig, saveConfig, scanNativeQr, type AppConfig } from './src/config';
 import { applyPairingPayload } from './src/qr';
 
 const DEMO_PASSWORD = 'test';
@@ -52,6 +52,7 @@ function App() {
   const [demoId, setDemoId] = useState('AE19051');
   const [qrText, setQrText] = useState('');
   const [config, setConfig] = useState<AppConfig>(nativeConfig());
+  const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
 
   const refreshPresent = useCallback(async () => {
     try {
@@ -159,6 +160,8 @@ function App() {
                 </Pressable>
               </View>
 
+              {error ? <Text style={styles.settingsError}>{error}</Text> : null}
+
               <Text style={styles.cardLabel}>リーダー</Text>
               <Text style={styles.meta}>{readerStatusText(reader)}</Text>
               <Pressable
@@ -201,6 +204,26 @@ function App() {
               <Text style={styles.meta}>{isApiConfigured(config) ? 'API 接続設定済み' : 'API キー未設定'}</Text>
 
               <Text style={styles.cardLabel}>QR / JSON 読み取り</Text>
+              <Pressable
+                style={styles.button}
+                onPress={() => {
+                  scanNativeQr()
+                    .then(raw => applyPairingPayload(raw))
+                    .then(next => {
+                      setConfig(next);
+                      setError(null);
+                      setSettingsNotice('QR から API 設定を読み込みました');
+                    })
+                    .catch(err => {
+                      const message = err instanceof Error ? err.message : String(err);
+                      if (!message.toLowerCase().includes('cancel')) {
+                        setError(message);
+                      }
+                    });
+                }}>
+                <Text style={styles.buttonText}>カメラで QR を読む</Text>
+              </Pressable>
+              {settingsNotice ? <Text style={styles.meta}>{settingsNotice}</Text> : null}
               <TextInput
                 value={qrText}
                 onChangeText={setQrText}
@@ -303,6 +326,7 @@ const styles = StyleSheet.create({
   cardLabel: { color: '#9BB0A4', fontSize: 16, marginTop: 8 },
   meta: { color: '#9BB0A4', fontSize: 16 },
   error: { color: '#FF8A80', fontSize: 18, marginTop: 16, textAlign: 'center' },
+  settingsError: { color: '#FF8A80', fontSize: 16 },
   input: {
     backgroundColor: '#171E1B',
     color: '#FFFFFF',

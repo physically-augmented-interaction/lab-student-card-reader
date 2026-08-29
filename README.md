@@ -56,3 +56,5 @@ Android アプリは gradle プロパティか環境変数で接続します。
     LAB_API_BASE_URL=https://lab-attendance.manabe-lab.workers.dev
     LAB_API_KEY=ltn_...
     LAB_DEVICE_ID=tablet-1
+
+設定画面で API キーを発行すると QR が出ます。アプリの歯車 > 「カメラで QR を読む」で同じ内容を読み取れます。JSON の手貼りも残しています。

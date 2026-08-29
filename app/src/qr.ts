@@ -9,7 +9,7 @@ export type PairingPayload = {
 
 export function parsePairingPayload(raw: string): AppConfig | null {
   try {
-    const parsed = JSON.parse(raw) as PairingPayload;
+    const parsed = JSON.parse(raw.trim()) as PairingPayload;
     if (!parsed.apiBaseUrl || !parsed.apiKey) return null;
     return {
       apiBaseUrl: parsed.apiBaseUrl.endsWith('/') ? parsed.apiBaseUrl.slice(0, -1) : parsed.apiBaseUrl,
