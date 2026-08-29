@@ -73,6 +73,8 @@ function tokyoParts(date = new Date()) {
     month: "2-digit",
     day: "2-digit",
     weekday: "short",
+    hour: "2-digit",
+    hour12: false,
   }).formatToParts(date);
   const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
   const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
@@ -80,12 +82,23 @@ function tokyoParts(date = new Date()) {
     y: Number(get("year")),
     m: Number(get("month")),
     d: Number(get("day")),
+    hour: Number(get("hour")),
     weekday: weekdayMap[get("weekday")] ?? 0,
   };
 }
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
+}
+
+function tokyoDateTime(year: number, month: number, day: number, hour = 0, minute = 0): Date {
+  return new Date(year + "-" + pad(month) + "-" + pad(day) + "T" + pad(hour) + ":" + pad(minute) + ":00+09:00");
+}
+
+function addTokyoDays(year: number, month: number, day: number, delta: number) {
+  const next = tokyoDateTime(year, month, day);
+  next.setUTCDate(next.getUTCDate() + delta);
+  return tokyoParts(next);
 }
 
 function formatTokyoDateTime(value: string | Date | null | undefined): string {
@@ -106,15 +119,9 @@ function formatTokyoDateTime(value: string | Date | null | undefined): string {
 }
 
 function tokyoSessionCutoff(now = new Date()): Date {
-  const { y, m, d } = tokyoParts(now);
-  const hour = Number(
-    new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "2-digit", hour12: false })
-      .formatToParts(now)
-      .find((part) => part.type === "hour")?.value ?? "0",
-  );
-  const cutoffDay = hour < 2 ? d - 1 : d;
-  const cutoffDate = new Date(Date.UTC(y, m - 1, cutoffDay, 2, 0, 0) - 9 * 60 * 60 * 1000);
-  return cutoffDate;
+  const parts = tokyoParts(now);
+  const cutoff = parts.hour < 2 ? addTokyoDays(parts.y, parts.m, parts.d, -1) : parts;
+  return tokyoDateTime(cutoff.y, cutoff.m, cutoff.d, 2, 0);
 }
 
 function tokyoMonthKey(date = new Date()): string {
@@ -128,7 +135,8 @@ function tokyoDayKey(date = new Date()): string {
 }
 
 function daysInTokyoMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const nextMonth = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
+  return addTokyoDays(nextMonth.y, nextMonth.m, 1, -1).d;
 }
 
 function parseMonth(value: string | null): { year: number; month: number; key: string } {
@@ -426,13 +434,13 @@ async function getSettings(env: Env): Promise<Response> {
 async function dashboard(env: Env, request: Request): Promise<Response> {
   const url = new URL(request.url);
   const parsed = parseMonth(url.searchParams.get("month"));
-  const startLocal = parsed.key + "-01T00:00:00+09:00";
-  const nextMonth = parsed.month === 12 ? parsed.year + 1 + "-01" : parsed.year + "-" + pad(parsed.month + 1);
-  const endLocal = nextMonth + "-01T00:00:00+09:00";
+  const start = tokyoDateTime(parsed.year, parsed.month, 1);
+  const next = parsed.month === 12 ? { y: parsed.year + 1, m: 1 } : { y: parsed.year, m: parsed.month + 1 };
+  const end = tokyoDateTime(next.y, next.m, 1);
   const visits = await env.DB.prepare(
     "SELECT v.id, v.student_id, v.event_type, v.occurred_at, v.source, v.device_id, v.idm, COALESCE(m.display_name, '') AS display_name FROM visits v LEFT JOIN members m ON m.student_id = v.student_id WHERE v.occurred_at >= ? AND v.occurred_at < ? ORDER BY v.occurred_at ASC",
   )
-    .bind(new Date(startLocal).toISOString(), new Date(endLocal).toISOString())
+    .bind(start.toISOString(), end.toISOString())
     .all<VisitRow & { display_name: string }>();
 
   const rows = visits.results || [];
