@@ -3,6 +3,7 @@ export interface Env {
   SOUNDS?: R2Bucket;
   ASSETS: Fetcher;
   APP_TIMEZONE: string;
+  SLACK_WEBHOOK_URL?: string;
 }
 
 type MemberRow = {
@@ -290,17 +291,41 @@ async function handleScan(env: Env, request: Request): Promise<Response> {
     .run();
 
   const sound = await resolvedSound(env, member, eventType);
+  const displayName = member.display_name || studentId;
+  await notifySlack(env, displayName, eventType);
   const present = await listPresent(env);
   return json({
     visitId,
     studentId,
-    displayName: member.display_name || studentId,
+    displayName,
     eventType,
     occurredAt,
     soundUrl: sound.url,
     soundSource: sound.source,
     present,
   });
+}
+
+async function notifySlack(env: Env, displayName: string, eventType: "enter" | "leave"): Promise<void> {
+  const webhookUrl = env.SLACK_WEBHOOK_URL;
+  if (!webhookUrl) return;
+  const action = eventType === "enter" ? "入室" : "退室";
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: displayName + "が" + action,
+        username: "room-log-bot",
+        icon_emoji: ":parrot_rainbow:",
+      }),
+    });
+    if (!response.ok) {
+      console.error("slack notify failed", response.status, await response.text());
+    }
+  } catch (error) {
+    console.error("slack notify failed", error);
+  }
 }
 
 async function listMembers(env: Env): Promise<Response> {
@@ -333,6 +358,22 @@ async function upsertMember(env: Env, studentId: string, request: Request): Prom
   return json({
     member: memberDto({ ...existing, display_name: displayName, note, updated_at: updatedAt }),
   });
+}
+
+async function deleteMember(env: Env, studentId: string): Promise<Response> {
+  const existing = await env.DB.prepare("SELECT student_id FROM members WHERE student_id = ?")
+    .bind(studentId)
+    .first<{ student_id: string }>();
+  if (!existing) return badRequest("member not found", 404);
+  await env.DB.prepare("DELETE FROM members WHERE student_id = ?").bind(studentId).run();
+  const sounds = env.SOUNDS;
+  if (sounds) {
+    await sounds.delete([
+      "sounds/members/" + studentId + "/enter",
+      "sounds/members/" + studentId + "/leave",
+    ]);
+  }
+  return json({ ok: true, studentId });
 }
 
 async function requireSounds(env: Env): Promise<R2Bucket | Response> {
@@ -685,6 +726,7 @@ export default {
         if (!studentId) return badRequest("invalid studentId");
         if (request.method === "GET") return getMember(env, studentId);
         if (request.method === "PUT") return upsertMember(env, studentId, request);
+        if (request.method === "DELETE") return deleteMember(env, studentId);
       }
 
       const keyMatch = path.match(/^\/api\/api-keys\/([^/]+)\/revoke$/);

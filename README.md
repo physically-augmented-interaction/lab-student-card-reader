@@ -13,7 +13,7 @@
 | QR | Google Play services code scanner | Web が発行した API 設定 QR をカメラで読む |
 | API / Web | Cloudflare Workers | 入退室トグル、在室リスト、ダッシュボード、設定画面 |
 | DB | Cloudflare D1 | メンバー、来室履歴、API キー、デフォルト効果音設定 |
-| 音声 | Cloudflare R2（未有効） | 入室 / 退室の効果音ファイル |
+| 音声 | Cloudflare R2 `lab-attendance-sounds` | 入室 / 退室の効果音ファイル |
 | 解析 | Python + nfcpy + uv | Mac 上で RC-S380 を探してカードダンプする |
 | ツールチェーン | mise | JDK / Node / Python / uv / Android SDK |
 | CI | GitHub Actions | 型チェック、テスト、debug APK、`release/v*` で APK 公開 |
@@ -43,6 +43,7 @@ flowchart LR
   worker -->|enter / leave と soundUrl| app
   app -->|GET soundUrl| worker
   web[管理 Web] -->|同一オリジン /api/＊| worker
+  worker -->|表示名が入室 / 退室| slack[Slack]
 ```
 
 読取時の処理はだいたい次のとおりです。
@@ -51,8 +52,9 @@ flowchart LR
 2. Kotlin は ASCII の学籍番号（例: `AE19051`）と IDm だけを JS に渡す。カードプロトコルは JS に出さない。
 3. アプリは `POST /api/scan` に `studentId` / `idm` / `deviceId` を送る。認証は `Authorization: Bearer ltn_...`。
 4. Worker は前回イベントを見て入室か退室かを決め、`visits` に書き、表示名と効果音 URL、いま在室の人を返す。
-5. アプリは中央に名前と入室/退室を出し、右側の在室リストを更新する。`soundUrl` があれば native の MediaPlayer で再生する。
-6. 在室リストは 15 秒ごとに `GET /api/present` でも取り直す。午前 2 時 JST を過ぎた未退室はリストから消える。
+5. 入退室が記録できたら、表示名が空でなければその名前、空なら学籍番号で Slack に「名前が入室」「名前が退室」と送る。Webhook が未設定、または送信に失敗しても記録自体は成功のまま返す。
+6. アプリは中央に名前と入室/退室を出し、右側の在室リストを更新する。`soundUrl` があれば native の MediaPlayer で再生する。
+7. 在室リストは 15 秒ごとに `GET /api/present` でも取り直す。午前 2 時 JST を過ぎた未退室はリストから消える。この自動削除では Slack には送らない。
 
 管理 Web は同じ Worker の静的ファイルです。ダッシュボードは `GET /api/dashboard`、設定はメンバー・効果音・API キーを `/api/members` `/api/sounds/*` `/api/api-keys` で扱います。Web の認証はまだ Cloudflare Access 前なので、API キー発行画面も同じオリジンに出ています。
 
@@ -122,7 +124,14 @@ npx wrangler d1 migrations apply lab-attendance --remote
 npx wrangler deploy
 ```
 
-ダッシュボードは `/`、設定は `/settings/` です。効果音用 R2 は Cloudflare ダッシュボードで R2 を有効化したあと、bucket `lab-attendance-sounds` を作って `wrangler.jsonc` の binding を戻してください。今は未有効なので音声アップロードは 503 になります。
+Slack 通知を出すときは、Webhook URL を secret として入れます。URL はリポジトリに書きません。
+
+```sh
+cd worker
+npx wrangler secret put SLACK_WEBHOOK_URL
+```
+
+ダッシュボードは `/`、設定は `/settings/` です。効果音は R2 bucket `lab-attendance-sounds` に保存し、Worker の `SOUNDS` binding から読み書きします。
 
 ## CI / Release
 

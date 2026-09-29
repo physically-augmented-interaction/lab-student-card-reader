@@ -1,11 +1,43 @@
 async function loadMembers() {
   const data = await api("/api/members");
   document.querySelector("#members").innerHTML = data.members
-    .map((row) => "<tr><td>" + row.studentId + "</td><td>" + (row.displayName || "-") + "</td><td>" + (row.note || "-") + "</td><td>" + (row.hasEnterSound ? "カスタム" : "デフォルト") + "</td><td>" + (row.hasLeaveSound ? "カスタム" : "デフォルト") + "</td></tr>")
+    .map((row) => {
+      return "<tr>" +
+        "<td>" + escapeHtml(row.studentId) + "</td>" +
+        "<td>" + escapeHtml(row.displayName || "-") + "</td>" +
+        "<td>" + escapeHtml(row.note || "-") + "</td>" +
+        "<td>" + (row.hasEnterSound ? "カスタム" : "デフォルト") + "</td>" +
+        "<td>" + (row.hasLeaveSound ? "カスタム" : "デフォルト") + "</td>" +
+        '<td class="row-actions">' +
+          '<button type="button" class="compact" data-edit="' + escapeHtml(row.studentId) + '">編集</button>' +
+          '<button type="button" class="ghost compact" data-delete="' + escapeHtml(row.studentId) + '">削除</button>' +
+        "</td></tr>";
+    })
     .join("");
   if (!data.members.length) {
-    document.querySelector("#members").innerHTML = '<tr><td class="empty" colspan="5">まだメンバーがいません</td></tr>';
+    document.querySelector("#members").innerHTML = '<tr><td class="empty" colspan="6">まだメンバーがいません</td></tr>';
   }
+}
+
+function resetMemberForm() {
+  const form = document.querySelector("#member-form");
+  form.reset();
+  form.studentId.readOnly = false;
+  document.querySelector("#member-heading").textContent = "メンバー追加";
+  document.querySelector("#member-cancel").hidden = true;
+}
+
+function fillMemberForm(member) {
+  const form = document.querySelector("#member-form");
+  form.studentId.value = member.studentId;
+  form.studentId.readOnly = true;
+  form.displayName.value = member.displayName || "";
+  form.note.value = member.note || "";
+  form.enterSound.value = "";
+  form.leaveSound.value = "";
+  document.querySelector("#member-heading").textContent = member.studentId + " を編集";
+  document.querySelector("#member-cancel").hidden = false;
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function loadDefaults() {
@@ -42,7 +74,7 @@ document.querySelector("#member-form").addEventListener("submit", async (event) 
     });
     await uploadSound("/api/sounds/enter/" + encodeURIComponent(studentId), form.enterSound.files[0]);
     await uploadSound("/api/sounds/leave/" + encodeURIComponent(studentId), form.leaveSound.files[0]);
-    form.reset();
+    resetMemberForm();
     notice.textContent = studentId + " を保存しました";
     await loadMembers();
   } catch (error) {
@@ -93,6 +125,34 @@ document.querySelector("#api-keys").addEventListener("click", async (event) => {
   if (!id) return;
   await api("/api/api-keys/" + id + "/revoke", { method: "POST" });
   await loadKeys();
+});
+
+document.querySelector("#member-cancel").addEventListener("click", () => {
+  resetMemberForm();
+  document.querySelector("#member-notice").textContent = "";
+});
+
+document.querySelector("#members").addEventListener("click", async (event) => {
+  const editId = event.target.getAttribute("data-edit");
+  const deleteId = event.target.getAttribute("data-delete");
+  const notice = document.querySelector("#member-notice");
+  try {
+    if (editId) {
+      const data = await api("/api/members/" + encodeURIComponent(editId));
+      fillMemberForm(data.member);
+      notice.textContent = editId + " を編集中です。効果音は選び直したときだけ上書きします。";
+      return;
+    }
+    if (deleteId) {
+      if (!window.confirm(deleteId + " を削除しますか？入退室の履歴は残ります。")) return;
+      await api("/api/members/" + encodeURIComponent(deleteId), { method: "DELETE" });
+      if (document.querySelector("#member-form").studentId.value === deleteId) resetMemberForm();
+      notice.textContent = deleteId + " を削除しました";
+      await loadMembers();
+    }
+  } catch (error) {
+    notice.textContent = error.message;
+  }
 });
 
 Promise.all([loadMembers(), loadDefaults(), loadKeys()]).catch((error) => {

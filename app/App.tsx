@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -16,6 +17,8 @@ import { loadConfig, nativeConfig, saveConfig, scanNativeQr, type AppConfig } fr
 import { applyPairingPayload } from './src/qr';
 
 const DEMO_PASSWORD = 'test';
+const leftCornerImage = require('./src/assets/mario-left.png');
+const rightCornerImage = require('./src/assets/mario-right.png');
 
 function readerConnected(event: ReaderEvent | null): boolean {
   return event?.status === 'attached';
@@ -78,6 +81,12 @@ function App() {
       setBusy(false);
     }
   }, [refreshPresent]);
+
+  useEffect(() => {
+    if (!scan) return;
+    const timer = setTimeout(() => setScan(null), 3000);
+    return () => clearTimeout(timer);
+  }, [scan]);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +157,8 @@ function App() {
           </View>
 
           {disconnected ? <Text style={styles.disconnected}>リーダー未接続</Text> : null}
+          <Image source={leftCornerImage} style={styles.cornerLeft} resizeMode="contain" />
+          <Image source={rightCornerImage} style={styles.cornerRight} resizeMode="contain" />
         </View>
 
         <Modal visible={settingsOpen} animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
@@ -318,7 +329,21 @@ const styles = StyleSheet.create({
   presentRow: { marginBottom: 14 },
   presentName: { color: '#FFFFFF', fontSize: 22, fontWeight: '600' },
   presentMeta: { color: '#9BB0A4', fontSize: 14, marginTop: 4 },
-  disconnected: { position: 'absolute', left: 20, bottom: 18, color: '#FF8A80', fontSize: 16 },
+  disconnected: { position: 'absolute', left: 20, bottom: 210, color: '#FF8A80', fontSize: 16, zIndex: 2 },
+  cornerLeft: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    width: 180,
+    height: 190,
+  },
+  cornerRight: {
+    position: 'absolute',
+    right: 288,
+    bottom: 8,
+    width: 190,
+    height: 210,
+  },
   settings: { padding: 24, gap: 12 },
   settingsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   settingsTitle: { color: '#FFFFFF', fontSize: 32, fontWeight: '700' },

@@ -34,11 +34,12 @@ class PasoriConfigModule(
             val mediaPlayer = MediaPlayer()
             mediaPlayer.setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build(),
             )
             mediaPlayer.setDataSource(url)
+            mediaPlayer.setVolume(1f, 1f)
             mediaPlayer.setOnPreparedListener { it.start() }
             mediaPlayer.setOnCompletionListener {
                 it.release()

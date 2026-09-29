@@ -18,9 +18,12 @@
       "migrations_dir": "migrations"
     }
   ],
-  // Enable R2 in the Cloudflare dashboard, create bucket lab-attendance-sounds,
-  // then restore this binding:
-  // "r2_buckets": [{ "binding": "SOUNDS", "bucket_name": "lab-attendance-sounds" }]
+  "r2_buckets": [
+    {
+      "binding": "SOUNDS",
+      "bucket_name": "lab-attendance-sounds"
+    }
+  ],
   "vars": {
     "APP_TIMEZONE": "Asia/Tokyo"
   }

@@ -172,6 +172,8 @@ form { display: grid; gap: 14px; }
   font-size: 12px;
 }
 .actions { display: flex; justify-content: flex-end; }
+.row-actions { display: flex; gap: 8px; justify-content: flex-end; white-space: nowrap; }
+input[readonly] { color: var(--muted); }
 
 input, button, .file-box {
   font: inherit;
