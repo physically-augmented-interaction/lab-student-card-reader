@@ -1,6 +1,6 @@
 # Attendance backend
 
-Cloudflare Workers + D1 + R2. Web UI is intended to sit behind Cloudflare Access later. Reader APIs are authenticated with multiple hashed API keys stored in D1.
+Cloudflare Workers + D1 + R2. The production Worker, including its APIs, is protected by Cloudflare Access (campus network bypass or an allowed campus email login). Reader scan APIs additionally authenticate against hashed API keys stored in D1.
 
 ## Schema
 
@@ -9,6 +9,31 @@ Cloudflare Workers + D1 + R2. Web UI is intended to sit behind Cloudflare Access
 - visits: enter/leave events keyed by student_id
 
 Scan toggles enter/leave from the last visit.
+
+## Attendance reads and caching
+
+`listPresent` uses the existing `visits_occurred_at_idx` date range index and
+`visits_student_occurred_idx` to check for newer events with `NOT EXISTS`. It does
+not aggregate the entire visit history on every poll. No schema migration is needed.
+
+Only `GET /api/present` opts into Workers Cache. Its shared TTL is at most 60
+seconds, capped at the next 02:00 JST session boundary. Browser/device responses
+have `max-age=0`; the shared cache uses `s-maxage`. Successful scans, member edits,
+and member deletes purge the `attendance-present` tag globally before returning.
+The scan response itself is uncached and includes a fresh present list. If purge
+fails, the committed mutation still succeeds and the old list expires within the
+TTL. Environments without `ctx.cache` stay uncached.
+
+The tablet polls every 30 seconds, uses the scan response instead of fetching
+again, and ignores polls that started before a newer scan response. Older installed
+APKs still benefit from the server cache and optimized SQL; updating the APK is
+required for the client request reduction.
+
+Run the Worker regression checks with:
+
+    npm run types
+    npx tsc --noEmit
+    npm test
 
 Sounds:
 

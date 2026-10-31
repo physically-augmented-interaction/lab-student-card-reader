@@ -1,3 +1,6 @@
+import { invalidatePresentAfter, presentCacheHeaders } from "./present-cache.ts";
+import { LIST_PRESENT_SQL } from "./present-query.ts";
+
 export interface Env {
   DB: D1Database;
   SOUNDS?: R2Bucket;
@@ -596,12 +599,9 @@ async function currentPresentCount(env: Env): Promise<number> {
   return (await listPresent(env)).length;
 }
 
-async function listPresent(env: Env): Promise<Array<{ studentId: string; displayName: string; enteredAt: string; enteredAtLabel: string }>> {
-  const cutoff = tokyoSessionCutoff().toISOString();
-  const lastEvents = await env.DB.prepare(
-    "SELECT v.student_id, v.event_type, v.occurred_at, COALESCE(m.display_name, '') AS display_name FROM visits v LEFT JOIN members m ON m.student_id = v.student_id JOIN (SELECT student_id, MAX(occurred_at) AS occurred_at FROM visits GROUP BY student_id) latest ON latest.student_id = v.student_id AND latest.occurred_at = v.occurred_at WHERE v.occurred_at >= ? ORDER BY v.occurred_at DESC",
-  )
-    .bind(cutoff)
+async function listPresent(env: Env, cutoff = tokyoSessionCutoff()): Promise<Array<{ studentId: string; displayName: string; enteredAt: string; enteredAtLabel: string }>> {
+  const lastEvents = await env.DB.prepare(LIST_PRESENT_SQL)
+    .bind(cutoff.toISOString())
     .all<{ student_id: string; event_type: string; occurred_at: string; display_name: string }>();
   return (lastEvents.results || [])
     .filter((row) => row.event_type === "enter")
@@ -686,17 +686,22 @@ async function revokeApiKey(env: Env, id: string): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     try {
       if (path === "/api/health") return json({ ok: true });
-      if (path === "/api/scan" && request.method === "POST") return handleScan(env, request);
+      if (path === "/api/scan" && request.method === "POST") {
+        return await invalidatePresentAfter(await handleScan(env, request), ctx.cache);
+      }
       if (path === "/api/members" && request.method === "GET") return listMembers(env);
       if (path === "/api/dashboard" && request.method === "GET") return dashboard(env, request);
       if (path === "/api/present" && request.method === "GET") {
-        const present = await listPresent(env);
-        return json({ present, cutoffAt: tokyoSessionCutoff().toISOString(), cutoffAtLabel: formatTokyoDateTime(tokyoSessionCutoff()) });
+        const cutoff = tokyoSessionCutoff();
+        const present = await listPresent(env, cutoff);
+        // Without purge support (for example, local development), stay uncached.
+        const headers = ctx.cache ? presentCacheHeaders(cutoff, new Date()) : {};
+        return json({ present, cutoffAt: cutoff.toISOString(), cutoffAtLabel: formatTokyoDateTime(cutoff) }, 200, headers);
       }
       if (path === "/api/api-keys" && request.method === "GET") return listApiKeys(env);
       if (path === "/api/api-keys" && request.method === "POST") return createApiKey(env, request);
@@ -725,8 +730,12 @@ export default {
         const studentId = normalizeStudentId(decodeURIComponent(memberMatch[1]));
         if (!studentId) return badRequest("invalid studentId");
         if (request.method === "GET") return getMember(env, studentId);
-        if (request.method === "PUT") return upsertMember(env, studentId, request);
-        if (request.method === "DELETE") return deleteMember(env, studentId);
+        if (request.method === "PUT") {
+          return await invalidatePresentAfter(await upsertMember(env, studentId, request), ctx.cache);
+        }
+        if (request.method === "DELETE") {
+          return await invalidatePresentAfter(await deleteMember(env, studentId), ctx.cache);
+        }
       }
 
       const keyMatch = path.match(/^\/api\/api-keys\/([^/]+)\/revoke$/);

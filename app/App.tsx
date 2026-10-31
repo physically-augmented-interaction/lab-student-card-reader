@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Modal,
@@ -56,13 +56,24 @@ function App() {
   const [qrText, setQrText] = useState('');
   const [config, setConfig] = useState<AppConfig>(nativeConfig());
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
+  const presentGeneration = useRef(0);
+  const presentRequestGeneration = useRef<number | null>(null);
 
   const refreshPresent = useCallback(async () => {
+    const generation = presentGeneration.current;
+    if (presentRequestGeneration.current === generation) return;
+    presentRequestGeneration.current = generation;
     try {
       const people = await fetchPresent();
-      setPresent(people);
+      if (presentGeneration.current === generation) setPresent(people);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (presentGeneration.current === generation) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (presentRequestGeneration.current === generation) {
+        presentRequestGeneration.current = null;
+      }
     }
   }, []);
 
@@ -72,9 +83,11 @@ function App() {
     try {
       const result = await scanCard({ studentId, idm, source });
       setScan(result);
-      if (result.present) setPresent(result.present);
+      // A poll started before this scan must not replace its newer snapshot.
+      presentGeneration.current += 1;
+      if (result.present !== undefined) setPresent(result.present);
+      else await refreshPresent();
       await playMemberSound(result.soundUrl);
-      await refreshPresent();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -108,9 +121,10 @@ function App() {
     });
     const timer = setInterval(() => {
       if (!cancelled) refreshPresent().catch(() => {});
-    }, 15000);
+    }, 30000);
     return () => {
       cancelled = true;
+      presentGeneration.current += 1;
       cardSub.remove();
       readerSub.remove();
       clearInterval(timer);

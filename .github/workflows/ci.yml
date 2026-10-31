@@ -43,6 +43,7 @@ jobs:
       - run: npm ci
       - run: npx wrangler types
       - run: npx tsc --noEmit
+      - run: npm test
 
   python:
     name: Python tools
