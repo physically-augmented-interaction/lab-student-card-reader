@@ -10,9 +10,15 @@ monthInput.value = currentMonthValue();
 let dashboard = null;
 let selectedDate = null;
 let selectedStudentId = null;
+let refreshTimer = null;
 
-function summaryCard(label, value) {
-  return '<div class="card"><span>' + label + '</span><b>' + value + '</b></div>';
+function summaryCard(label, value, members = [], emptyMessage) {
+  const names = members.length
+    ? '<ul class="summary-members">' + members.map((member) =>
+      '<li>' + escapeHtml(member.displayName || member.studentId) + '</li>'
+    ).join("") + '</ul>'
+    : '<p class="summary-empty">' + escapeHtml(emptyMessage) + '</p>';
+  return '<div class="card"><span>' + escapeHtml(label) + '</span><b>' + escapeHtml(value) + '</b>' + names + '</div>';
 }
 
 function formatDayLabel(date) {
@@ -40,8 +46,8 @@ function filteredMembers() {
 function renderSummary() {
   if (!dashboard) return;
   summaryEl.innerHTML = [
-    summaryCard("今日の入室人数", dashboard.summary.todayEnterUnique),
-    summaryCard("いま在室", dashboard.summary.presentNow),
+    summaryCard("今日の入室人数", dashboard.summary.todayEnterUnique, dashboard.summary.todayEnterMembers, "今日の入室記録はありません"),
+    summaryCard("いま在室", dashboard.summary.presentNow, dashboard.summary.presentMembers, "だれもいません"),
   ].join("");
 }
 
@@ -118,6 +124,17 @@ async function loadDashboard() {
   if (selectedDate && !dashboard.daily.some((row) => row.date === selectedDate)) selectedDate = null;
   if (selectedStudentId && !dashboard.members.some((row) => row.studentId === selectedStudentId)) selectedStudentId = null;
   renderDashboard();
+  if (refreshTimer !== null) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
+  const refreshDelay = Date.parse(dashboard.refreshAt) - Date.parse(dashboard.generatedAt);
+  if (Number.isFinite(refreshDelay) && refreshDelay > 0) {
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      return loadDashboard().catch(setError);
+    }, refreshDelay);
+  }
 }
 
 function setError(error) {

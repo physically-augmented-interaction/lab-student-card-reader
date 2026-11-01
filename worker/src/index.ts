@@ -220,8 +220,10 @@ async function lastVisit(env: Env, studentId: string): Promise<VisitRow | null> 
     .first<VisitRow>();
 }
 
-function nextEventType(previous: VisitRow | null): "enter" | "leave" {
-  return previous && previous.event_type === "enter" ? "leave" : "enter";
+function nextEventType(previous: VisitRow | null, now: Date): "enter" | "leave" {
+  const stillPresent = previous?.event_type === "enter"
+    && Date.parse(previous.occurred_at) >= tokyoSessionCutoff(now).getTime();
+  return stillPresent ? "leave" : "enter";
 }
 
 function memberDto(member: MemberRow) {
@@ -284,8 +286,8 @@ async function handleScan(env: Env, request: Request): Promise<Response> {
 
   const member = await ensureMember(env, studentId);
   const previous = await lastVisit(env, studentId);
-  const eventType = nextEventType(previous);
   const occurredAt = nowIso();
+  const eventType = nextEventType(previous, new Date(occurredAt));
   const visitId = crypto.randomUUID();
   await env.DB.prepare(
     "INSERT INTO visits (id, student_id, event_type, occurred_at, source, device_id, idm) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -476,6 +478,7 @@ async function getSettings(env: Env): Promise<Response> {
 }
 
 async function dashboard(env: Env, request: Request): Promise<Response> {
+  const now = new Date();
   const url = new URL(request.url);
   const parsed = parseMonth(url.searchParams.get("month"));
   const start = tokyoDateTime(parsed.year, parsed.month, 1);
@@ -491,10 +494,15 @@ async function dashboard(env: Env, request: Request): Promise<Response> {
   const uniqueStudents = new Set(rows.map((row) => row.student_id));
   const enterCount = rows.filter((row) => row.event_type === "enter").length;
   const leaveCount = rows.filter((row) => row.event_type === "leave").length;
-  const presentNow = await currentPresentCount(env);
+  const cutoff = tokyoSessionCutoff(now);
+  const presentMembers = await listPresent(env, cutoff);
   const lastDay = daysInTokyoMonth(parsed.year, parsed.month);
 
-  const todayKey = tokyoDayKey();
+  const todayKey = tokyoDayKey(now);
+  const todayParts = tokyoParts(now);
+  const tomorrow = addTokyoDays(todayParts.y, todayParts.m, todayParts.d, 1);
+  const tomorrowStart = tokyoDateTime(tomorrow.y, tomorrow.m, tomorrow.d);
+  const todayEntries = new Map<string, { studentId: string; displayName: string }>();
   const byDay = new Map<string, { date: string; enters: number; leaves: number; uniqueStudents: Set<string>; members: Map<string, { studentId: string; displayName: string; enters: number; leaves: number; lastVisitAt: string }> }>();
   const byStudent = new Map<string, { studentId: string; displayName: string; enters: number; leaves: number; lastVisitAt: string; days: Set<string> }>();
 
@@ -508,6 +516,12 @@ async function dashboard(env: Env, request: Request): Promise<Response> {
     else dayBucket.leaves += 1;
 
     if (row.event_type === "enter") dayBucket.uniqueStudents.add(row.student_id);
+    if (day === todayKey && row.event_type === "enter") {
+      todayEntries.set(row.student_id, {
+        studentId: row.student_id,
+        displayName: row.display_name || row.student_id,
+      });
+    }
 
     if (!dayBucket.members.has(row.student_id)) {
       dayBucket.members.set(row.student_id, {
@@ -540,6 +554,21 @@ async function dashboard(env: Env, request: Request): Promise<Response> {
     studentBucket.days.add(day);
   }
 
+  // The two summary cards describe today/current presence, even when viewing a past month.
+  // Only that uncommon case needs an additional, date-indexed query.
+  if (parsed.key !== todayKey.slice(0, 7)) {
+    const todayVisits = await env.DB.prepare(
+      "SELECT DISTINCT v.student_id, COALESCE(m.display_name, '') AS display_name FROM visits v LEFT JOIN members m ON m.student_id = v.student_id WHERE v.occurred_at >= ? AND v.occurred_at < ? AND v.event_type = 'enter'",
+    )
+      .bind(tokyoDateTime(todayParts.y, todayParts.m, todayParts.d).toISOString(), tomorrowStart.toISOString())
+      .all<{ student_id: string; display_name: string }>();
+    for (const row of todayVisits.results || []) {
+      todayEntries.set(row.student_id, { studentId: row.student_id, displayName: row.display_name || row.student_id });
+    }
+  }
+  const todayEnterMembers = [...todayEntries.values()]
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, "ja") || a.studentId.localeCompare(b.studentId));
+
   const daily = [];
   for (let day = 1; day <= lastDay; day += 1) {
     const date = parsed.key + "-" + pad(day);
@@ -560,13 +589,17 @@ async function dashboard(env: Env, request: Request): Promise<Response> {
   return json({
     month: parsed.key,
     timezone: "Asia/Tokyo",
+    generatedAt: now.toISOString(),
+    refreshAt: new Date(Math.min(tomorrowStart.getTime(), cutoff.getTime() + 24 * 60 * 60 * 1000)).toISOString(),
     summary: {
       uniqueStudents: uniqueStudents.size,
-      todayEnterUnique: byDay.get(todayKey)?.uniqueStudents.size || 0,
+      todayEnterUnique: todayEnterMembers.length,
+      todayEnterMembers,
       todayKey,
       enterCount,
       leaveCount,
-      presentNow,
+      presentNow: presentMembers.length,
+      presentMembers,
     },
     daily,
     members: [...byStudent.values()]
@@ -593,10 +626,6 @@ function withTokyoTimes<T extends { lastVisitAt?: string; occurredAt?: string; c
     createdAtLabel: formatTokyoDateTime(row.createdAt || row.created_at || null),
     lastUsedAtLabel: formatTokyoDateTime(row.last_used_at || null),
   };
-}
-
-async function currentPresentCount(env: Env): Promise<number> {
-  return (await listPresent(env)).length;
 }
 
 async function listPresent(env: Env, cutoff = tokyoSessionCutoff()): Promise<Array<{ studentId: string; displayName: string; enteredAt: string; enteredAtLabel: string }>> {

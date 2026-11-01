@@ -8,7 +8,23 @@ Cloudflare Workers + D1 + R2. The production Worker, including its APIs, is prot
 - api_keys: hashed token, prefix, revoke timestamp, last used
 - visits: enter/leave events keyed by student_id
 
-Scan toggles enter/leave from the last visit.
+Scan toggles enter/leave from the last visit in the current session, starting at
+02:00 JST. An earlier unclosed enter is treated as departed; the first scan after
+the cutoff records a new enter. Midnight alone does not end the session. Automatic
+departure is derived from the timestamp, without synthetic visit records or Slack
+notifications, so the visit history continues to represent actual scans.
+
+The dashboard summary includes `todayEnterMembers` (unique people with an enter
+since 00:00 JST) and `presentMembers` (the current session's present list), alongside
+the existing counts. They describe today/current presence independently of the
+selected historical month. Names fall back to student IDs. The current-month view
+reuses its existing history query; a historical-month view needs one additional
+date-indexed query for today's entries. Presence is queried only once per dashboard
+request and reused for both its count and names.
+
+`generatedAt` and `refreshAt` tell the dashboard when to refresh at the next civil
+midnight or 02:00 session boundary. The browser sets one timer from the server's
+relative interval; it does not continuously poll the monthly history.
 
 ## Attendance reads and caching
 
